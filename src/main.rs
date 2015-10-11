@@ -1,5 +1,6 @@
 extern crate tar;
 
+use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::path::PathBuf;
@@ -47,7 +48,7 @@ fn main() {
     println!("Loading {}: found {} files", tname2, afiles2.len());
 
     println!("Phase 1 compare start");
-    let mut p1same: Vec<PathBuf> = vec![];
+    let mut p1same: HashSet<PathBuf> = HashSet::new();
     let mut p1size: u64 = 0;
 
     let mut idx1: usize = 0;
@@ -61,7 +62,7 @@ fn main() {
             idx2 += 1;
         } else {
             if size1 == size2 {
-                p1same.push(name1.to_owned());
+                p1same.insert(name1.to_owned());
                 p1size += size1;
             }
             idx1 += 1;
