@@ -71,7 +71,15 @@ fn main() {
         // not a bottleneck
         if idx1 == len1 || idx2 == len2 { break }
     }
-    println!("Phase 1 compare end: {} files with {} bytes", p1same.len(), p1size);
+
+    let sizestr = if p1size > 99 * 1024 * 1024 {
+        format!("~{}MB", p1size / 1024 / 1024)
+    } else if p1size > 99 * 1024 {
+        format!("~{}KB", p1size / 1024)
+    } else {
+        format!("~{}B", p1size)
+    };
+    println!("Phase 1 compare end: {} files with {}", p1same.len(), sizestr);
 
     // prune dirs
 }
