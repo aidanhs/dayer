@@ -18,6 +18,8 @@ fn get_initial_filelist(a: &Archive<File>) -> Vec<(PathBuf, u64)> {
         let path = header.path().unwrap().into_owned();
         let size = header.size().unwrap();
 
+        if size == 0 { continue }
+
         afiles.push((path, size));
     }
     afiles.sort_by(|a, b| a.0.cmp(&b.0));
