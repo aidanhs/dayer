@@ -3,26 +3,54 @@ extern crate tar;
 use std::collections::HashSet;
 use std::env;
 use std::fs::File;
-use std::path::PathBuf;
-use tar::Archive;
+use std::hash::{Hash, Hasher};
+use std::ptr;
+use tar::{Header, Archive};
 
-fn get_initial_filelist(a: &Archive<File>) -> Vec<(PathBuf, u64)> {
-    let mut afiles: Vec<(PathBuf, u64)> = vec![];
+// https://github.com/rust-lang/rust/issues/13721
+struct HashableHeader(Header);
+impl HashableHeader {
+    pub fn new(srcheader: &Header) -> HashableHeader {
+        let mut header: Header = Header::new();
+        unsafe { ptr::copy_nonoverlapping(srcheader, &mut header as *mut Header, 1) };
+        return HashableHeader(header);
+    }
+    // stolen from tar-rs
+    fn as_bytes(&self) -> &[u8; 512] {
+        unsafe { &*(&self.0 as *const _ as *const [u8; 512]) }
+    }
+}
+impl Hash for HashableHeader {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_bytes().hash(state);
+    }
+}
+impl PartialEq for HashableHeader {
+    fn eq(&self, other: &HashableHeader) -> bool {
+        self.as_bytes().iter().zip(other.as_bytes().iter()).all(|(a, b)| a == b)
+    }
+}
+impl Eq for HashableHeader {}
+
+fn get_initial_filelist(a: &Archive<File>) -> HashSet<HashableHeader> {
+    let mut afiles: HashSet<HashableHeader> = HashSet::new();
     for file in a.files().unwrap() {
         // Make sure there wasn't an I/O error
         let file = file.unwrap();
-
-        // Get basic file metadata
-        let header = file.header();
-        let path = header.path().unwrap().into_owned();
-        let size = header.size().unwrap();
-
-        if size == 0 { continue }
-
-        afiles.push((path, size));
+        // Get file metadata
+        afiles.insert(HashableHeader::new(file.header()));
     }
-    afiles.sort_by(|a, b| a.0.cmp(&b.0));
     afiles
+}
+
+fn format_num_bytes(num: u64) -> String {
+    if num > 99 * 1024 * 1024 {
+        format!("~{}MB", num / 1024 / 1024)
+    } else if num > 99 * 1024 {
+        format!("~{}KB", num / 1024)
+    } else {
+        format!("~{}B", num)
+    }
 }
 
 fn main() {
@@ -37,50 +65,19 @@ fn main() {
     let file1 = File::open(tname1).unwrap();
     let ar1 = Archive::new(file1);
     let afiles1 = get_initial_filelist(&ar1);
-    let len1 = afiles1.len();
     println!("Loading {}: found {} files", tname1, afiles1.len());
 
     println!("Loading {}", tname2);
     let file2 = File::open(tname2).unwrap();
     let ar2 = Archive::new(file2);
     let afiles2 = get_initial_filelist(&ar2);
-    let len2 = afiles2.len();
     println!("Loading {}: found {} files", tname2, afiles2.len());
 
-    println!("Phase 1 compare start");
-    let mut p1same: HashSet<PathBuf> = HashSet::new();
-    let mut p1size: u64 = 0;
-
-    let mut idx1: usize = 0;
-    let mut idx2: usize = 0;
-    loop {
-        let (ref name1, size1) = afiles1[idx1];
-        let (ref name2, size2) = afiles2[idx2];
-        if name1 < name2 {
-            idx1 += 1;
-        } else if name2 < name1 {
-            idx2 += 1;
-        } else {
-            if size1 == size2 {
-                p1same.insert(name1.to_owned());
-                p1size += size1;
-            }
-            idx1 += 1;
-            idx2 += 1;
-        }
-        // Could be done in the conditionals but let's be honest, it's
-        // not a bottleneck
-        if idx1 == len1 || idx2 == len2 { break }
-    }
-
-    let sizestr = if p1size > 99 * 1024 * 1024 {
-        format!("~{}MB", p1size / 1024 / 1024)
-    } else if p1size > 99 * 1024 {
-        format!("~{}KB", p1size / 1024)
-    } else {
-        format!("~{}B", p1size)
-    };
-    println!("Phase 1 compare end: {} files with {}", p1same.len(), sizestr);
+    println!("Phase 1: metadata compare");
+    let p1result: Vec<_> = afiles1.intersection(&afiles2).collect();
+    let p1size = p1result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
+    let p1sizestr = format_num_bytes(p1size);
+    println!("Phase 1 complete: {} files with {}", p1result.len(), p1sizestr);
 
     // prune dirs
 }
