@@ -123,10 +123,30 @@ fn main() {
             print!("    Done {}\r", i);
         }
         io::stdout().flush().unwrap();
+        // Leave the file how we found it
+        bf1.seek(io::SeekFrom::Start(0)).unwrap();
+        bf2.seek(io::SeekFrom::Start(0)).unwrap();
     }
     let p2size = p2result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p2sizestr = format_num_bytes(p2size);
     println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
+
+    println!("Phase 3: common layer creation");
+    p2result.sort_by(|h1, h2| h1.0.path_bytes().cmp(&h2.0.path_bytes()));
+    let outname = "common.tar";
+    let outfile = fs::OpenOptions::new()
+        .read(false)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(outname)
+        .unwrap();
+    let outar = Archive::new(outfile);
+    for hheader in p2result {
+        outar.append(&hheader.0, arheadmap1.get_mut(&hheader).unwrap()).unwrap();
+    }
+    outar.finish().unwrap();
+    println!("Phase 3 complete: created {}", outname);
 
     // prune dirs
 }
