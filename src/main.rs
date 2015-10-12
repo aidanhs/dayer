@@ -2,7 +2,7 @@
 
 extern crate tar;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -198,4 +198,16 @@ fn main() {
     populate_layer_tar(&outar, p2result.iter(), &mut arheadmap1);
     outar.finish().unwrap();
     println!("Phase 3 complete: created {}", outname);
+
+    println!("Phase 4: individual layer creation");
+    let outindname1 = "individual1.tar";
+    let outindfile1 = fs::File::create(outindname1).unwrap();
+    let outindar1 = Archive::new(outindfile1);
+    let commonset: HashSet<&HashableHeader> = p2result.iter().collect();
+    let mut outindheads1: Vec<_> = arheadmap1
+        .keys().filter(|h| !commonset.contains(h)).map(|h| h.clone()).collect();
+    outindheads1.sort_by(|h1, h2| h1.0.path_bytes().cmp(&h2.0.path_bytes()));
+    populate_layer_tar(&outindar1, outindheads1.iter(), &mut arheadmap1);
+    outindar1.finish().unwrap();
+    println!("Phase 4 complete: created {}", outindname1);
 }
