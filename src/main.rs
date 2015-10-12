@@ -92,7 +92,9 @@ fn populate_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
             newdir.set_cksum();
             outar.append(&newdir, &mut io::empty());
         }
-        outar.append(&header, headertofilemap.get_mut(&hheader).unwrap()).unwrap();
+        let file = headertofilemap.get_mut(&hheader).unwrap();
+        outar.append(&header, file).unwrap();
+        file.seek(io::SeekFrom::Start(0)).unwrap();
         if header.link[0] == b'5' {
             lastdir = path.to_path_buf();
         }
