@@ -148,6 +148,7 @@ fn main() {
 
     println!("Phase 2: data compare");
     let mut p2result: Vec<HashableHeader> = vec![];
+    // TODO: sort by offset in archive? means not seeking backwards
     for (i, hheader) in p1result.iter().enumerate() {
         let f1: &mut tar::File<fs::File> = arheadmap1.get_mut(hheader).unwrap();
         let f2: &mut tar::File<fs::File> = arheadmap2.get_mut(hheader).unwrap();
