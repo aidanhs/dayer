@@ -60,6 +60,17 @@ fn format_num_bytes(num: u64) -> String {
     }
 }
 
+// TODO
+// - check ustar at beginning
+// - check paths are not absolute
+// - be more intelligent about dirs - no point storing one child dir in common
+//   tar because we have to store the parents as well, and then have to
+//   overwrite the parents in specific tar
+// - implement rebasing 'onto' an image, with deletes for irrelevant files etc
+// - how do directory overwrites work in docker layers? e.g. if you chmod it,
+//   presumably it will pull parent directories up from the previous layer, does
+//   it grab children files as well?
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
