@@ -189,13 +189,7 @@ fn main() {
 
     println!("Phase 3: common layer creation");
     let outname = "common.tar";
-    let outfile = fs::OpenOptions::new()
-        .read(false)
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(outname)
-        .unwrap();
+    let outfile = fs::File::create(outname).unwrap();
     // Can append even though it's not mutable
     // https://github.com/alexcrichton/tar-rs/issues/31
     let outar = Archive::new(outfile);
