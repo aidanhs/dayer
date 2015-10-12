@@ -1,9 +1,11 @@
 extern crate tar;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
+use std::io;
+use std::io::prelude::*;
 use std::ptr;
 use tar::{Header, Archive};
 
@@ -16,28 +18,33 @@ impl HashableHeader {
         return HashableHeader(header);
     }
     // stolen from tar-rs
-    fn as_bytes(&self) -> &[u8; 512] {
+    fn head_bytes(&self) -> &[u8; 512] {
         unsafe { &*(&self.0 as *const _ as *const [u8; 512]) }
     }
 }
 impl Hash for HashableHeader {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_bytes().hash(state);
+        self.head_bytes().hash(state);
     }
 }
 impl PartialEq for HashableHeader {
     fn eq(&self, other: &HashableHeader) -> bool {
-        self.as_bytes().iter().zip(other.as_bytes().iter()).all(|(a, b)| a == b)
+        self.head_bytes()[..] == other.head_bytes()[..]
+    }
+}
+impl Clone for HashableHeader {
+    fn clone(&self) -> HashableHeader {
+        HashableHeader::new(&self.0)
     }
 }
 impl Eq for HashableHeader {}
 
-fn get_header_set(arfiles: &Vec<tar::File<fs::File>>) -> HashSet<HashableHeader> {
-    let mut arfileset: HashSet<HashableHeader> = HashSet::new();
-    for file in arfiles.iter() {
-        arfileset.insert(HashableHeader::new(file.header()));
+fn get_header_map<'a>(arfiles: &'a mut Vec<tar::File<'a, fs::File>>) -> HashMap<HashableHeader, &'a mut tar::File<'a, fs::File>> {
+    let mut arfilemap: HashMap<HashableHeader, &'a mut tar::File<'a, fs::File>> = HashMap::new();
+    for file in arfiles.iter_mut() {
+        arfilemap.insert(HashableHeader::new(file.header()), file);
     }
-    arfileset
+    arfilemap
 }
 
 fn format_num_bytes(num: u64) -> String {
@@ -61,22 +68,45 @@ fn main() {
     println!("Loading {}", tname1);
     let file1 = fs::File::open(tname1).unwrap();
     let ar1 = Archive::new(file1);
-    let arfiles1: Vec<_> = ar1.files().unwrap().map(|res| res.unwrap()).collect();
+    let mut arfiles1: Vec<_> = ar1.files().unwrap().map(|res| res.unwrap()).collect();
     println!("Loading {}: found {} files", tname1, arfiles1.len());
 
     println!("Loading {}", tname2);
     let file2 = fs::File::open(tname2).unwrap();
     let ar2 = Archive::new(file2);
-    let arfiles2: Vec<_> = ar2.files().unwrap().map(|res| res.unwrap()).collect();
+    let mut arfiles2: Vec<_> = ar2.files().unwrap().map(|res| res.unwrap()).collect();
     println!("Loading {}: found {} files", tname2, arfiles2.len());
 
     println!("Phase 1: metadata compare");
-    let arheadset1 = get_header_set(&arfiles1);
-    let arheadset2 = get_header_set(&arfiles2);
-    let p1result: Vec<_> = arheadset1.intersection(&arheadset2).collect();
+    let mut arheadmap1 = get_header_map(&mut arfiles1);
+    let mut arheadmap2 = get_header_map(&mut arfiles2);
+    // ideally would be &HashableHeader, but that borrows the maps as immutable
+    // which then conflicts with the mutable borrow later because a borrow of
+    // either keys or values applies to the whole hashmap
+    // https://github.com/rust-lang/rfcs/issues/1215
+    let p1result: Vec<HashableHeader> = arheadmap1
+        .keys().filter(|k| arheadmap2.contains_key(k)).map(|k| k.clone()).collect();
     let p1size = p1result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p1sizestr = format_num_bytes(p1size);
     println!("Phase 1 complete: {} files with {}", p1result.len(), p1sizestr);
+
+    println!("Phase 2: data compare");
+    let mut p2result: Vec<HashableHeader> = vec![];
+    for (i, hheader) in p1result.iter().enumerate() {
+        let f1: &mut tar::File<fs::File> = arheadmap1.get_mut(hheader).unwrap();
+        let f2: &mut tar::File<fs::File> = arheadmap2.get_mut(hheader).unwrap();
+        // Do the files have the same contents?
+        // We've verified they have the same size by now
+        if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
+            p2result.push(hheader.clone());
+        }
+        print!("\r    Done {}", i);
+        io::stdout().flush().unwrap();
+    }
+    println!("");
+    let p2size = p2result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
+    let p2sizestr = format_num_bytes(p2size);
+    println!("Phase 2 complete: {} files with {}", p2result.len(), p2sizestr);
 
     // prune dirs
 }
