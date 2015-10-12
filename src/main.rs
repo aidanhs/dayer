@@ -66,6 +66,7 @@ fn populate_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
         headertofilemap: &mut HashMap<HashableHeader, &mut tar::File<fs::File>>) {
 
     let mut lastdir = PathBuf::new();
+    // TODO: set trailing slash of dirs for belt and braces?
     for hheader in headeriter {
         let header = &hheader.0;
         assert!(&header.ustar[..5] == b"ustar"); // TODO: get this as public?
@@ -75,13 +76,13 @@ fn populate_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
             lastdir = lastdir.parent().unwrap().to_path_buf();
         }
         // Climb down creating dirs as necessary
-        let relpath = { path.parent().unwrap().relative_from(&lastdir).unwrap().to_path_buf() };
+        let relpath = path.parent().unwrap().relative_from(&lastdir).unwrap().to_path_buf();
         for relcomponent in relpath.iter() {
             lastdir.push(relcomponent);
             // Create a holding-place directory for the common layer
             // as it will be overwritten layer
             let mut newdir = tar::Header::new();
-            newdir.set_path(&lastdir);
+            newdir.set_path(&lastdir).unwrap();
             newdir.set_mode(0);
             newdir.set_uid(0);
             newdir.set_gid(0);
@@ -90,7 +91,7 @@ fn populate_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
             newdir.link[0] = b'5'; // dir
             // linkname: irrelevant
             newdir.set_cksum();
-            outar.append(&newdir, &mut io::empty());
+            outar.append(&newdir, &mut io::empty()).unwrap();
         }
         let file = headertofilemap.get_mut(&hheader).unwrap();
         outar.append(&header, file).unwrap();
