@@ -96,9 +96,26 @@ fn main() {
         let f1: &mut tar::File<fs::File> = arheadmap1.get_mut(hheader).unwrap();
         let f2: &mut tar::File<fs::File> = arheadmap2.get_mut(hheader).unwrap();
         // Do the files have the same contents?
-        // We've verified they have the same size by now
-        if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
-            p2result.push(hheader.clone());
+        // Note we've verified they have the same size by now
+        let mut bf1 = io::BufReader::new(f1);
+        let mut bf2 = io::BufReader::new(f2);
+        loop {
+            let minsize = {
+                let buf1 = bf1.fill_buf().unwrap();
+                let buf2 = bf2.fill_buf().unwrap();
+                let minsize = if buf1.len() < buf2.len() { buf1.len() } else { buf2.len() };
+                if minsize == 0 {
+                    assert!(buf1.len() == 0 && buf2.len() == 0);
+                    p2result.push(hheader.clone());
+                    break
+                }
+                if buf1[0..minsize] != buf2[0..minsize] {
+                    break
+                }
+                minsize
+            };
+            bf1.consume(minsize);
+            bf2.consume(minsize);
         }
         print!("\r    Done {}", i);
         io::stdout().flush().unwrap();
