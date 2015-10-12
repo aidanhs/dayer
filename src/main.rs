@@ -204,10 +204,14 @@ fn main() {
     println!("Phase 3 complete: created {}", outname);
 
     println!("Phase 4: individual layer creation");
-    let outindname1 = "individual1.tar";
     let commonset: HashSet<&HashableHeader> = p2result.iter().collect();
+    let outindname1 = "individual1.tar";
     let outindheads1: Vec<_> = arheadmap1
         .keys().filter(|h| !commonset.contains(h)).map(|h| h.clone()).collect();
     make_layer_tar(outindname1, outindheads1.iter(), &mut arheadmap1);
-    println!("Phase 4 complete: created {}", outindname1);
+    let outindname2 = "individual2.tar";
+    let outindheads2: Vec<_> = arheadmap2
+        .keys().filter(|h| !commonset.contains(h)).map(|h| h.clone()).collect();
+    make_layer_tar(outindname2, outindheads2.iter(), &mut arheadmap2);
+    println!("Phase 4 complete: created {} {}", outindname1, outindname2);
 }
