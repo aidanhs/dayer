@@ -1,3 +1,5 @@
+#![feature(path_relative_from)]
+
 extern crate tar;
 
 use std::collections::HashMap;
@@ -6,6 +8,7 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::prelude::*;
+use std::path::PathBuf;
 use std::ptr;
 use tar::{Header, Archive};
 
@@ -132,7 +135,6 @@ fn main() {
     println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
 
     println!("Phase 3: common layer creation");
-    p2result.sort_by(|h1, h2| h1.0.path_bytes().cmp(&h2.0.path_bytes()));
     let outname = "common.tar";
     let outfile = fs::OpenOptions::new()
         .read(false)
@@ -142,11 +144,40 @@ fn main() {
         .open(outname)
         .unwrap();
     let outar = Archive::new(outfile);
+    // Alphabetical ordering
+    p2result.sort_by(|h1, h2| h1.0.path_bytes().cmp(&h2.0.path_bytes()));
+    let mut lastdir = PathBuf::new();
     for hheader in p2result {
-        outar.append(&hheader.0, arheadmap1.get_mut(&hheader).unwrap()).unwrap();
+        let header = &hheader.0;
+        assert!(&header.ustar[..5] == b"ustar"); // TODO: get this as public?
+        let path = header.path().unwrap();
+        // Climb up to find common prefix
+        while !path.starts_with(&lastdir) {
+            lastdir = lastdir.parent().unwrap().to_path_buf();
+        }
+        // Climb down creating dirs as necessary
+        let relpath = { path.parent().unwrap().relative_from(&lastdir).unwrap().to_path_buf() };
+        for relcomponent in relpath.iter() {
+            lastdir.push(relcomponent);
+            // Create a holding-place directory for the common layer
+            // as it will be overwritten layer
+            let mut newdir = tar::Header::new();
+            newdir.set_path(&lastdir);
+            newdir.set_mode(0);
+            newdir.set_uid(0);
+            newdir.set_gid(0);
+            newdir.set_mtime(0);
+            // cksum: calculated below
+            newdir.link[0] = b'5'; // dir
+            // linkname: irrelevant
+            newdir.set_cksum();
+            outar.append(&newdir, &mut io::empty());
+        }
+        outar.append(&header, arheadmap1.get_mut(&hheader).unwrap()).unwrap();
+        if header.link[0] == b'5' {
+            lastdir = path.to_path_buf();
+        }
     }
     outar.finish().unwrap();
     println!("Phase 3 complete: created {}", outname);
-
-    // prune dirs
 }
