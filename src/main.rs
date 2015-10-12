@@ -60,14 +60,23 @@ fn format_num_bytes(num: u64) -> String {
     }
 }
 
-fn populate_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
-        outar: &Archive<fs::File>,
+fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
+        outname: &str,
         headeriter: I,
         headertofilemap: &mut HashMap<HashableHeader, &mut tar::File<fs::File>>) {
 
+    let outfile = fs::File::create(outname).unwrap();
+    // Can append even though it's not mutable
+    // https://github.com/alexcrichton/tar-rs/issues/31
+    let outar = Archive::new(outfile);
+
+    // Alphabetical ordering, lets us make assumptions about directory traversal
+    let mut headers: Vec<&HashableHeader> = headeriter.collect();
+    headers.sort_by(|h1, h2| h1.0.path_bytes().cmp(&h2.0.path_bytes()));
+
     let mut lastdir = PathBuf::new();
     // TODO: set trailing slash of dirs for belt and braces?
-    for hheader in headeriter {
+    for hheader in headers.iter() {
         let header = &hheader.0;
         assert!(&header.ustar[..5] == b"ustar"); // TODO: get this as public?
         let path = header.path().unwrap();
@@ -100,6 +109,7 @@ fn populate_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
             lastdir = path.to_path_buf();
         }
     }
+    outar.finish().unwrap();
 }
 
 // TODO
@@ -190,25 +200,14 @@ fn main() {
 
     println!("Phase 3: common layer creation");
     let outname = "common.tar";
-    let outfile = fs::File::create(outname).unwrap();
-    // Can append even though it's not mutable
-    // https://github.com/alexcrichton/tar-rs/issues/31
-    let outar = Archive::new(outfile);
-    // Alphabetical ordering
-    p2result.sort_by(|h1, h2| h1.0.path_bytes().cmp(&h2.0.path_bytes()));
-    populate_layer_tar(&outar, p2result.iter(), &mut arheadmap1);
-    outar.finish().unwrap();
+    make_layer_tar("common.tar", p2result.iter(), &mut arheadmap1);
     println!("Phase 3 complete: created {}", outname);
 
     println!("Phase 4: individual layer creation");
     let outindname1 = "individual1.tar";
-    let outindfile1 = fs::File::create(outindname1).unwrap();
-    let outindar1 = Archive::new(outindfile1);
     let commonset: HashSet<&HashableHeader> = p2result.iter().collect();
-    let mut outindheads1: Vec<_> = arheadmap1
+    let outindheads1: Vec<_> = arheadmap1
         .keys().filter(|h| !commonset.contains(h)).map(|h| h.clone()).collect();
-    outindheads1.sort_by(|h1, h2| h1.0.path_bytes().cmp(&h2.0.path_bytes()));
-    populate_layer_tar(&outindar1, outindheads1.iter(), &mut arheadmap1);
-    outindar1.finish().unwrap();
+    make_layer_tar(outindname1, outindheads1.iter(), &mut arheadmap1);
     println!("Phase 4 complete: created {}", outindname1);
 }
