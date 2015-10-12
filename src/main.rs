@@ -88,7 +88,7 @@ fn main() {
         .keys().filter(|k| arheadmap2.contains_key(k)).map(|k| k.clone()).collect();
     let p1size = p1result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p1sizestr = format_num_bytes(p1size);
-    println!("Phase 1 complete: {} files with {}", p1result.len(), p1sizestr);
+    println!("Phase 1 complete: possible {} files with {}", p1result.len(), p1sizestr);
 
     println!("Phase 2: data compare");
     let mut p2result: Vec<HashableHeader> = vec![];
@@ -97,6 +97,8 @@ fn main() {
         let f2: &mut tar::File<fs::File> = arheadmap2.get_mut(hheader).unwrap();
         // Do the files have the same contents?
         // Note we've verified they have the same size by now
+        // This approach is slow :(
+        // if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
         let mut bf1 = io::BufReader::new(f1);
         let mut bf2 = io::BufReader::new(f2);
         loop {
@@ -117,13 +119,14 @@ fn main() {
             bf1.consume(minsize);
             bf2.consume(minsize);
         }
-        print!("\r    Done {}", i);
+        if i % 100 == 0 {
+            print!("    Done {}\r", i);
+        }
         io::stdout().flush().unwrap();
     }
-    println!("");
     let p2size = p2result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p2sizestr = format_num_bytes(p2size);
-    println!("Phase 2 complete: {} files with {}", p2result.len(), p2sizestr);
+    println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
 
     // prune dirs
 }
