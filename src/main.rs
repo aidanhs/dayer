@@ -2,7 +2,7 @@ extern crate tar;
 
 use std::collections::HashSet;
 use std::env;
-use std::fs::File;
+use std::fs;
 use std::hash::{Hash, Hasher};
 use std::ptr;
 use tar::{Header, Archive};
@@ -32,15 +32,12 @@ impl PartialEq for HashableHeader {
 }
 impl Eq for HashableHeader {}
 
-fn get_initial_filelist(a: &Archive<File>) -> HashSet<HashableHeader> {
-    let mut afiles: HashSet<HashableHeader> = HashSet::new();
-    for file in a.files().unwrap() {
-        // Make sure there wasn't an I/O error
-        let file = file.unwrap();
-        // Get file metadata
-        afiles.insert(HashableHeader::new(file.header()));
+fn get_header_set(arfiles: &Vec<tar::File<fs::File>>) -> HashSet<HashableHeader> {
+    let mut arfileset: HashSet<HashableHeader> = HashSet::new();
+    for file in arfiles.iter() {
+        arfileset.insert(HashableHeader::new(file.header()));
     }
-    afiles
+    arfileset
 }
 
 fn format_num_bytes(num: u64) -> String {
@@ -62,19 +59,21 @@ fn main() {
     let tname2 = &args[2];
 
     println!("Loading {}", tname1);
-    let file1 = File::open(tname1).unwrap();
+    let file1 = fs::File::open(tname1).unwrap();
     let ar1 = Archive::new(file1);
-    let afiles1 = get_initial_filelist(&ar1);
-    println!("Loading {}: found {} files", tname1, afiles1.len());
+    let arfiles1: Vec<_> = ar1.files().unwrap().map(|res| res.unwrap()).collect();
+    println!("Loading {}: found {} files", tname1, arfiles1.len());
 
     println!("Loading {}", tname2);
-    let file2 = File::open(tname2).unwrap();
+    let file2 = fs::File::open(tname2).unwrap();
     let ar2 = Archive::new(file2);
-    let afiles2 = get_initial_filelist(&ar2);
-    println!("Loading {}: found {} files", tname2, afiles2.len());
+    let arfiles2: Vec<_> = ar2.files().unwrap().map(|res| res.unwrap()).collect();
+    println!("Loading {}: found {} files", tname2, arfiles2.len());
 
     println!("Phase 1: metadata compare");
-    let p1result: Vec<_> = afiles1.intersection(&afiles2).collect();
+    let arheadset1 = get_header_set(&arfiles1);
+    let arheadset2 = get_header_set(&arfiles2);
+    let p1result: Vec<_> = arheadset1.intersection(&arheadset2).collect();
     let p1size = p1result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p1sizestr = format_num_bytes(p1size);
     println!("Phase 1 complete: {} files with {}", p1result.len(), p1sizestr);
