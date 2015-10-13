@@ -119,6 +119,7 @@ fn main() {
         println!("Invalid number of args: {}", args.len());
     }
     let tnames: Vec<_> = args[1..].iter().collect();
+    let numars = tnames.len();
 
     println!("Opening tars");
     let ars: Vec<tar::Archive<fs::File>> = tnames.iter().map(|tname| {
@@ -134,20 +135,28 @@ fn main() {
 
     println!("Phase 1: metadata compare");
     let mut arheadmaps: Vec<_> = arfiless.iter_mut().map(|arfiles| get_header_map(arfiles)).collect();
-    let (leftarheadmaps, rightarheadmaps) = arheadmaps.split_at_mut(1);
-    let mut arheadmap1 = &mut leftarheadmaps[0];
-    let mut arheadmap2 = &mut rightarheadmaps[0];
     // ideally would be &HashableHeader, but that borrows the maps as immutable
     // which then conflicts with the mutable borrow later because a borrow of
     // either keys or values applies to the whole hashmap
     // https://github.com/rust-lang/rfcs/issues/1215
-    let p1result: Vec<HashableHeader> = arheadmap1
-        .keys().filter(|k| arheadmap2.contains_key(k)).map(|k| k.clone()).collect();
+    let p1result: Vec<HashableHeader> = {
+        let mut headercount: HashMap<&HashableHeader, usize> = HashMap::new();
+        for key in arheadmaps.iter().flat_map(|hm| hm.keys()) {
+          let counter = headercount.entry(key).or_insert(0);
+          *counter += 1;
+        }
+        headercount.iter().filter_map(|(hheader, count)| {
+            if *count != numars { None } else { Some((*hheader).clone()) }
+        }).collect()
+    };
     let p1size = p1result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p1sizestr = format_num_bytes(p1size);
     println!("Phase 1 complete: possible {} files with {}", p1result.len(), p1sizestr);
 
     println!("Phase 2: data compare");
+    let (leftarheadmaps, rightarheadmaps) = arheadmaps.split_at_mut(1);
+    let mut arheadmap1 = &mut leftarheadmaps[0];
+    let mut arheadmap2 = &mut rightarheadmaps[0];
     let mut p2result: Vec<HashableHeader> = vec![];
     // TODO: sort by offset in archive? means not seeking backwards
     for (i, hheader) in p1result.iter().enumerate() {
