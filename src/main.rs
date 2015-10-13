@@ -200,9 +200,6 @@ fn main() {
     println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
 
     println!("Phase 3: common layer creation");
-    let (leftarheadmaps, rightarheadmaps) = arheadmaps.split_at_mut(1);
-    let mut arheadmap1 = &mut leftarheadmaps[0];
-    let mut arheadmap2 = &mut rightarheadmaps[0];
     let minimalmkdir = |dirpath: &Path| {
         // Create a holding-place directory for the common layer
         // as it will be overwritten layer
@@ -219,10 +216,14 @@ fn main() {
         newdir
     };
     let outname = "common.tar";
-    make_layer_tar("common.tar", p2result.iter(), &mut arheadmap1, &minimalmkdir);
+    // It doesn't matter which head map, these are common files!
+    make_layer_tar("common.tar", p2result.iter(), arheadmaps.get_mut(0).unwrap(), &minimalmkdir);
     println!("Phase 3 complete: created {}", outname);
 
     println!("Phase 4: individual layer creation");
+    let (leftarheadmaps, rightarheadmaps) = arheadmaps.split_at_mut(1);
+    let mut arheadmap1 = &mut leftarheadmaps[0];
+    let mut arheadmap2 = &mut rightarheadmaps[0];
     let tonormpath = |h: &HashableHeader| {
         h.0.path().unwrap().components().as_path().to_path_buf()
     };
