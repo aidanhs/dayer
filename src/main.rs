@@ -154,51 +154,52 @@ fn main() {
     println!("Phase 1 complete: possible {} files with {}", p1result.len(), p1sizestr);
 
     println!("Phase 2: data compare");
-    let (leftarheadmaps, rightarheadmaps) = arheadmaps.split_at_mut(1);
-    let mut arheadmap1 = &mut leftarheadmaps[0];
-    let mut arheadmap2 = &mut rightarheadmaps[0];
     let mut p2result: Vec<HashableHeader> = vec![];
     // TODO: sort by offset in archive? means not seeking backwards
     for (i, hheader) in p1result.iter().enumerate() {
-        let f1: &mut tar::File<fs::File> = arheadmap1.get_mut(hheader).unwrap();
-        let f2: &mut tar::File<fs::File> = arheadmap2.get_mut(hheader).unwrap();
+        let mut files: Vec<&mut &mut tar::File<fs::File>> = arheadmaps.iter_mut().map(|arh|
+            arh.get_mut(hheader).unwrap()
+        ).collect();
         // Do the files have the same contents?
         // Note we've verified they have the same size by now
         // This approach is slow:
         //     if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
-        let mut bf1 = io::BufReader::with_capacity(512, f1);
-        let mut bf2 = io::BufReader::with_capacity(512, f2);
+        let mut buffiles: Vec<_> = files.iter_mut().map(|f| io::BufReader::with_capacity(512, f)).collect();
         loop {
             let numread = {
-                let buf1 = bf1.fill_buf().unwrap();
-                let buf2 = bf2.fill_buf().unwrap();
-                let numread = buf1.len();
+                let bufs: Vec<&[u8]> = buffiles.iter_mut().map(|bf| bf.fill_buf().unwrap()).collect();
+                let basebuf = bufs[0];
+                let numread = basebuf.len();
                 if numread == 0 {
-                    assert!(buf2.len() == 0);
                     p2result.push(hheader.clone());
                     break
                 }
-                if buf1[..] != buf2[..] {
+                if !bufs.iter().all(|buf| &basebuf == buf) {
                     break
                 }
                 numread
             };
-            bf1.consume(numread);
-            bf2.consume(numread);
+            for bf in buffiles.iter_mut() {
+                bf.consume(numread);
+            }
         }
         if i % 100 == 0 {
             print!("    Done {}\r", i);
         }
         io::stdout().flush().unwrap();
         // Leave the file how we found it
-        bf1.seek(io::SeekFrom::Start(0)).unwrap();
-        bf2.seek(io::SeekFrom::Start(0)).unwrap();
+        for bf in buffiles.iter_mut() {
+            bf.seek(io::SeekFrom::Start(0)).unwrap();
+        }
     }
     let p2size = p2result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p2sizestr = format_num_bytes(p2size);
     println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
 
     println!("Phase 3: common layer creation");
+    let (leftarheadmaps, rightarheadmaps) = arheadmaps.split_at_mut(1);
+    let mut arheadmap1 = &mut leftarheadmaps[0];
+    let mut arheadmap2 = &mut rightarheadmaps[0];
     let minimalmkdir = |dirpath: &Path| {
         // Create a holding-place directory for the common layer
         // as it will be overwritten layer
