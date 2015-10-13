@@ -133,9 +133,10 @@ fn main() {
     }).collect();
 
     println!("Phase 1: metadata compare");
-    let (leftarfiless, rightarfiless) = arfiless.split_at_mut(1);
-    let mut arheadmap1 = get_header_map(&mut leftarfiless[0]);
-    let mut arheadmap2 = get_header_map(&mut rightarfiless[0]);
+    let mut arheadmaps: Vec<_> = arfiless.iter_mut().map(|arfiles| get_header_map(arfiles)).collect();
+    let (leftarheadmaps, rightarheadmaps) = arheadmaps.split_at_mut(1);
+    let mut arheadmap1 = &mut leftarheadmaps[0];
+    let mut arheadmap2 = &mut rightarheadmaps[0];
     // ideally would be &HashableHeader, but that borrows the maps as immutable
     // which then conflicts with the mutable borrow later because a borrow of
     // either keys or values applies to the whole hashmap
