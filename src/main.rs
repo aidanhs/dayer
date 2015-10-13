@@ -118,24 +118,24 @@ fn main() {
     if args.len() != 3 {
         println!("Invalid number of args: {}", args.len());
     }
-    let tname1 = &args[1];
-    let tname2 = &args[2];
+    let tnames: Vec<_> = args[1..].iter().collect();
 
-    println!("Loading {}", tname1);
-    let file1 = fs::File::open(tname1).unwrap();
-    let ar1 = Archive::new(file1);
-    let mut arfiles1: Vec<_> = ar1.files().unwrap().map(|res| res.unwrap()).collect();
-    println!("Loading {}: found {} files", tname1, arfiles1.len());
-
-    println!("Loading {}", tname2);
-    let file2 = fs::File::open(tname2).unwrap();
-    let ar2 = Archive::new(file2);
-    let mut arfiles2: Vec<_> = ar2.files().unwrap().map(|res| res.unwrap()).collect();
-    println!("Loading {}: found {} files", tname2, arfiles2.len());
+    println!("Opening tars");
+    let ars: Vec<tar::Archive<fs::File>> = tnames.iter().map(|tname| {
+        let file = fs::File::open(tname).unwrap();
+        Archive::new(file)
+    }).collect();
+    let mut arfiless: Vec<Vec<tar::File<fs::File>>> = ars.iter().zip(tnames).map(|(ar, tname)| {
+        println!("Loading {}", tname);
+        let arfiles: Vec<_> = ar.files().unwrap().map(|res| res.unwrap()).collect();
+        println!("Loading {}: found {} files", tname, arfiles.len());
+        arfiles
+    }).collect();
 
     println!("Phase 1: metadata compare");
-    let mut arheadmap1 = get_header_map(&mut arfiles1);
-    let mut arheadmap2 = get_header_map(&mut arfiles2);
+    let (leftarfiless, rightarfiless) = arfiless.split_at_mut(1);
+    let mut arheadmap1 = get_header_map(&mut leftarfiless[0]);
+    let mut arheadmap2 = get_header_map(&mut rightarfiless[0]);
     // ideally would be &HashableHeader, but that borrows the maps as immutable
     // which then conflicts with the mutable borrow later because a borrow of
     // either keys or values applies to the whole hashmap
