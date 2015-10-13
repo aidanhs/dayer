@@ -200,9 +200,9 @@ fn main() {
     println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
 
     println!("Phase 3: common layer creation");
+    // Create a holding-place directory for the common layer as it will be
+    // by the layer above
     let minimalmkdir = |dirpath: &Path| {
-        // Create a holding-place directory for the common layer
-        // as it will be overwritten layer
         let mut newdir = tar::Header::new();
         newdir.set_path(&dirpath).unwrap();
         newdir.set_mode(0);
@@ -217,7 +217,7 @@ fn main() {
     };
     let outname = "common.tar";
     // It doesn't matter which head map, these are common files!
-    make_layer_tar("common.tar", p2result.iter(), arheadmaps.get_mut(0).unwrap(), &minimalmkdir);
+    make_layer_tar(outname, p2result.iter(), arheadmaps.get_mut(0).unwrap(), &minimalmkdir);
     println!("Phase 3 complete: created {}", outname);
 
     println!("Phase 4: individual layer creation");
