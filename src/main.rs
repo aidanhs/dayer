@@ -221,9 +221,6 @@ fn main() {
     println!("Phase 3 complete: created {}", outname);
 
     println!("Phase 4: individual layer creation");
-    let (leftarheadmaps, rightarheadmaps) = arheadmaps.split_at_mut(1);
-    let mut arheadmap1 = &mut leftarheadmaps[0];
-    let mut arheadmap2 = &mut rightarheadmaps[0];
     let tonormpath = |h: &HashableHeader| {
         h.0.path().unwrap().components().as_path().to_path_buf()
     };
@@ -232,13 +229,11 @@ fn main() {
     let thievingmkdir = |dirpath: &Path| {
         commonmap[dirpath].clone().0
     };
-    let outindname1 = "individual1.tar";
-    let outindheads1: Vec<_> = arheadmap1
-        .keys().filter(|h| !commonmap.contains_key(&tonormpath(h))).map(|h| h.clone()).collect();
-    make_layer_tar(outindname1, outindheads1.iter(), &mut arheadmap1, &thievingmkdir);
-    let outindname2 = "individual2.tar";
-    let outindheads2: Vec<_> = arheadmap2
-        .keys().filter(|h| !commonmap.contains_key(&tonormpath(h))).map(|h| h.clone()).collect();
-    make_layer_tar(outindname2, outindheads2.iter(), &mut arheadmap2, &thievingmkdir);
-    println!("Phase 4 complete: created {} {}", outindname1, outindname2);
+    for (i, arheadmap) in arheadmaps.iter_mut().enumerate() {
+      let outname = format!("individual_{}.tar", i);
+      let outheads: Vec<_> = arheadmap
+          .keys().filter(|h| !commonmap.contains_key(&tonormpath(h))).map(|h| h.clone()).collect();
+      make_layer_tar(&outname, outheads.iter(), arheadmap, &thievingmkdir);
+    }
+    println!("Phase 4 complete: created {} individual tars", arheadmaps.len());
 }
