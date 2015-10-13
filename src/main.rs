@@ -134,7 +134,8 @@ fn main() {
     }).collect();
 
     println!("Phase 1: metadata compare");
-    let mut arheadmaps: Vec<_> = arfiless.iter_mut().map(|arfiles| get_header_map(arfiles)).collect();
+    let mut arheadmaps: Vec<HashMap<HashableHeader, &mut tar::File<fs::File>>> =
+        arfiless.iter_mut().map(|arfiles| get_header_map(arfiles)).collect();
     // ideally would be &HashableHeader, but that borrows the maps as immutable
     // which then conflicts with the mutable borrow later because a borrow of
     // either keys or values applies to the whole hashmap
@@ -164,7 +165,9 @@ fn main() {
         // Note we've verified they have the same size by now
         // This approach is slow:
         //     if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
-        let mut buffiles: Vec<_> = files.iter_mut().map(|f| io::BufReader::with_capacity(512, f)).collect();
+        let mut buffiles: Vec<_> = files.iter_mut().map(|f|
+            io::BufReader::with_capacity(512, f)
+        ).collect();
         loop {
             let numread = {
                 let bufs: Vec<&[u8]> = buffiles.iter_mut().map(|bf| bf.fill_buf().unwrap()).collect();
