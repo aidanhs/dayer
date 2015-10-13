@@ -115,7 +115,7 @@ fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>, F: Fn(&Path) -> tar:
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
+    if args.len() < 3 {
         println!("Invalid number of args: {}", args.len());
     }
     let tnames: Vec<_> = args[1..].iter().collect();
