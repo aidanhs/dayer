@@ -112,6 +112,7 @@ fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>, F: Fn(&Path) -> tar:
 // - how do directory overwrites work in docker layers? e.g. if you chmod it,
 //   presumably it will pull parent directories up from the previous layer, does
 //   it grab children files as well?
+// - assert not more than one of the same name
 
 fn main() {
     let args: Vec<String> = env::args().collect();
