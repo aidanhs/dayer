@@ -164,27 +164,27 @@ fn main() {
         let f2: &mut tar::File<fs::File> = arheadmap2.get_mut(hheader).unwrap();
         // Do the files have the same contents?
         // Note we've verified they have the same size by now
-        // This approach is slow :(
-        // if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
-        let mut bf1 = io::BufReader::new(f1);
-        let mut bf2 = io::BufReader::new(f2);
+        // This approach is slow:
+        //     if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
+        let mut bf1 = io::BufReader::with_capacity(512, f1);
+        let mut bf2 = io::BufReader::with_capacity(512, f2);
         loop {
-            let minsize = {
+            let numread = {
                 let buf1 = bf1.fill_buf().unwrap();
                 let buf2 = bf2.fill_buf().unwrap();
-                let minsize = if buf1.len() < buf2.len() { buf1.len() } else { buf2.len() };
-                if minsize == 0 {
-                    assert!(buf1.len() == 0 && buf2.len() == 0);
+                let numread = buf1.len();
+                if numread == 0 {
+                    assert!(buf2.len() == 0);
                     p2result.push(hheader.clone());
                     break
                 }
-                if buf1[0..minsize] != buf2[0..minsize] {
+                if buf1[..] != buf2[..] {
                     break
                 }
-                minsize
+                numread
             };
-            bf1.consume(minsize);
-            bf2.consume(minsize);
+            bf1.consume(numread);
+            bf2.consume(numread);
         }
         if i % 100 == 0 {
             print!("    Done {}\r", i);
