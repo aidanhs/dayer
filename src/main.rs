@@ -2,13 +2,13 @@
 
 extern crate tar;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr;
 use tar::{Header, Archive};
 
@@ -60,10 +60,11 @@ fn format_num_bytes(num: u64) -> String {
     }
 }
 
-fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
+fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>, F: Fn(&Path) -> tar::Header>(
         outname: &str,
         headeriter: I,
-        headertofilemap: &mut HashMap<HashableHeader, &mut tar::File<fs::File>>) {
+        headertofilemap: &mut HashMap<HashableHeader, &mut tar::File<fs::File>>,
+        mkdir: F) {
 
     let outfile = fs::File::create(outname).unwrap();
     // Can append even though it's not mutable
@@ -88,18 +89,7 @@ fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>>(
         let relpath = path.parent().unwrap().relative_from(&lastdir).unwrap().to_path_buf();
         for relcomponent in relpath.iter() {
             lastdir.push(relcomponent);
-            // Create a holding-place directory for the common layer
-            // as it will be overwritten layer
-            let mut newdir = tar::Header::new();
-            newdir.set_path(&lastdir).unwrap();
-            newdir.set_mode(0);
-            newdir.set_uid(0);
-            newdir.set_gid(0);
-            newdir.set_mtime(0);
-            // cksum: calculated below
-            newdir.link[0] = b'5'; // dir
-            // linkname: irrelevant
-            newdir.set_cksum();
+            let newdir = mkdir(&lastdir);
             outar.append(&newdir, &mut io::empty()).unwrap();
         }
         let file = headertofilemap.get_mut(&hheader).unwrap();
@@ -199,19 +189,41 @@ fn main() {
     println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
 
     println!("Phase 3: common layer creation");
+    let minimalmkdir = |dirpath: &Path| {
+        // Create a holding-place directory for the common layer
+        // as it will be overwritten layer
+        let mut newdir = tar::Header::new();
+        newdir.set_path(&dirpath).unwrap();
+        newdir.set_mode(0);
+        newdir.set_uid(0);
+        newdir.set_gid(0);
+        newdir.set_mtime(0);
+        // cksum: calculated below
+        newdir.link[0] = b'5'; // dir
+        // linkname: irrelevant
+        newdir.set_cksum();
+        newdir
+    };
     let outname = "common.tar";
-    make_layer_tar("common.tar", p2result.iter(), &mut arheadmap1);
+    make_layer_tar("common.tar", p2result.iter(), &mut arheadmap1, &minimalmkdir);
     println!("Phase 3 complete: created {}", outname);
 
     println!("Phase 4: individual layer creation");
-    let commonset: HashSet<&HashableHeader> = p2result.iter().collect();
+    let tonormpath = |h: &HashableHeader| {
+        h.0.path().unwrap().components().as_path().to_path_buf()
+    };
+    let commonmap: HashMap<PathBuf, &HashableHeader> = p2result
+        .iter().map(|h| (tonormpath(h), h)).collect();
+    let thievingmkdir = |dirpath: &Path| {
+        commonmap[dirpath].clone().0
+    };
     let outindname1 = "individual1.tar";
     let outindheads1: Vec<_> = arheadmap1
-        .keys().filter(|h| !commonset.contains(h)).map(|h| h.clone()).collect();
-    make_layer_tar(outindname1, outindheads1.iter(), &mut arheadmap1);
+        .keys().filter(|h| !commonmap.contains_key(&tonormpath(h))).map(|h| h.clone()).collect();
+    make_layer_tar(outindname1, outindheads1.iter(), &mut arheadmap1, &thievingmkdir);
     let outindname2 = "individual2.tar";
     let outindheads2: Vec<_> = arheadmap2
-        .keys().filter(|h| !commonset.contains(h)).map(|h| h.clone()).collect();
-    make_layer_tar(outindname2, outindheads2.iter(), &mut arheadmap2);
+        .keys().filter(|h| !commonmap.contains_key(&tonormpath(h))).map(|h| h.clone()).collect();
+    make_layer_tar(outindname2, outindheads2.iter(), &mut arheadmap2, &thievingmkdir);
     println!("Phase 4 complete: created {} {}", outindname1, outindname2);
 }
