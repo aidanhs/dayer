@@ -5,3 +5,6 @@ authors = ["Aidan Hobson Sayers <aidanhs@cantab.net>"]
 
 [dependencies]
 tar = "0.3"
+
+[dev-dependencies]
+tempdir = "0.3"

@@ -119,7 +119,11 @@ fn main() {
     if args.len() < 3 {
         println!("Invalid number of args: {}", args.len());
     }
-    let tnames: Vec<_> = args[1..].iter().collect();
+    let slargs: Vec<&str> = args[1..].iter().map(|s| &s[..]).collect();
+    commonise_tars(&slargs[..]);
+}
+
+pub fn commonise_tars(tnames: &[&str]) {
     let numars = tnames.len();
 
     println!("Opening tars");
@@ -246,4 +250,46 @@ fn main() {
       make_layer_tar(&outname, outheads.iter(), arheadmap, &thievingmkdir);
     }
     println!("Phase 4 complete: created {} individual tars", arheadmaps.len());
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate tempdir;
+
+    use std::env::set_current_dir;
+    use std::fs;
+
+    use self::tempdir::TempDir;
+    use super::tar::Archive;
+
+    use super::*;
+
+    macro_rules! t {
+        ($e:expr) => (match $e {
+            Ok(v) => v,
+            Err(e) => panic!("{} returned {}", stringify!($e), e),
+        })
+    }
+
+    #[test]
+    fn empty_tars() {
+        let td = t!(TempDir::new("dayer"));
+        t!(set_current_dir(td.path()));
+
+        let innames = vec!["in1.tar", "in2.tar"];
+        for inname in &innames[..] {
+            let infile = t!(fs::File::create(inname));
+            let inar = Archive::new(infile);
+            t!(inar.finish());
+        }
+
+        commonise_tars(&innames[..]);
+
+        let outnames = vec!["common.tar", "individual_0.tar", "individual_1.tar"];
+        for outname in &outnames[..] {
+            let outfile = t!(fs::File::open(outname));
+            let outar = Archive::new(outfile);
+            assert!(t!(outar.files()).count() == 0);
+        }
+    }
 }
