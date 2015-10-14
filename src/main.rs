@@ -5,6 +5,8 @@
 #![plugin(adorn)]
 // Only allow one test directory at a time
 #![feature(static_mutex)]
+// Literal maps for test purposes
+#[macro_use] extern crate maplit;
 
 extern crate tar;
 
@@ -318,27 +320,46 @@ mod tests {
     #[test]
     #[adorn(intmp)]
     fn simple_tars() {
-        let fnames = vec!["0", "1", "common"];
-        for fname in &fnames[..] {
+        let filecontents = hashmap!{
+            "0" => "0content",
+            "1" => "1content",
+            "common" => "commoncontent",
+        };
+        for (fname, fval) in filecontents.iter() {
             let mut f = t!(fs::File::create(fname));
-            t!(f.write_all(fname.as_bytes()));
+            t!(f.write_all(fval.as_bytes()));
         }
 
-        let innames = vec!["in1.tar", "in2.tar"];
-        for (i, inname) in (&innames[..]).iter().enumerate() {
+        let infilelists = hashmap!{
+            "in1.tar" => vec!["common", "0"],
+            "in2.tar" => vec!["common", "1"],
+        };
+        for (inname, infilelist) in infilelists.iter() {
             let infile = t!(fs::File::create(inname));
             let inar = Archive::new(infile);
-            t!(inar.append_path(format!("{}", i)));
-            t!(inar.append_path("common"));
+            for fname in infilelist {
+                t!(inar.append_path(fname));
+            }
             t!(inar.finish());
         }
 
-        commonise_tars(&innames[..]);
+        let infilenames: Vec<_> = infilelists.keys().map(|s| *s).collect();
+        commonise_tars(&infilenames[..]);
 
-        let outnames = vec!["common.tar", "individual_0.tar", "individual_1.tar"];
-        for outname in &outnames[..] {
+        let outfilelists = hashmap!{
+            "common.tar" => vec!["common"],
+            "individual_0.tar" => vec!["0"],
+            "individual_1.tar" => vec!["1"],
+        };
+        for (outname, outfilelist) in outfilelists.iter() {
             let outfile = t!(fs::File::open(outname));
             let outar = Archive::new(outfile);
+            assert!(outfilelist.len() == t!(outar.files()).count());
+            let acutalfilesiter = t!(outar.files()).map(|rf| t!(rf));
+            for (expectedpathstr, actualfile) in outfilelist.iter().zip(acutalfilesiter) {
+                let actualpath = t!(actualfile.header().path()).to_path_buf();
+                assert!(expectedpathstr == &actualpath.to_str().unwrap());
+            }
             assert!(t!(outar.files()).count() == 1);
         }
     }
