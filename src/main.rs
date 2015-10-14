@@ -129,7 +129,16 @@ fn main() {
     }).collect();
     let mut arfiless: Vec<Vec<tar::File<fs::File>>> = ars.iter().zip(tnames).map(|(ar, tname)| {
         println!("Loading {}", tname);
-        let arfiles: Vec<_> = ar.files().unwrap().map(|res| res.unwrap()).collect();
+        let mut skipnext = false;
+        let arfiles: Vec<_> = ar.files().unwrap().filter_map(|res| {
+            let af = res.unwrap();
+            match af.header().link[0] {
+              b'g' => panic!("Cannot handle global extended header"),
+              b'x' => panic!("Cannot handle extended header"),
+              _ if skipnext => { skipnext = false; None },
+              _ => Some(af),
+            }
+        }).collect();
         println!("Loading {}: found {} files", tname, arfiles.len());
         arfiles
     }).collect();
