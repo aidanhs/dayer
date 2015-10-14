@@ -3,6 +3,8 @@
 // For test decorators
 #![feature(plugin, custom_attribute)]
 #![plugin(adorn)]
+// Only allow one test directory at a time
+#![feature(static_mutex)]
 
 extern crate tar;
 
@@ -267,6 +269,8 @@ mod tests {
 
     use std::env::{current_dir, set_current_dir};
     use std::fs;
+    use std::io::prelude::*;
+    use std::sync::{StaticMutex, MUTEX_INIT};
 
     use self::tempdir::TempDir;
     use super::tar::Archive;
@@ -280,9 +284,12 @@ mod tests {
         })
     }
 
+    static TMPLOCK: StaticMutex = MUTEX_INIT;
+
     fn intmp<F>(f: F) where F: Fn() {
-        let old = current_dir().unwrap();
+        let _g = TMPLOCK.lock().unwrap(); // destroyed at end of fn
         let td = TempDir::new("dayer").unwrap(); // destroyed at end of fn
+        let old = current_dir().unwrap();
         set_current_dir(td.path()).unwrap();
         f();
         set_current_dir(old).unwrap();
@@ -291,7 +298,7 @@ mod tests {
     #[test]
     #[adorn(intmp)]
     fn empty_tars() {
-        let innames = vec!["in1.tar", "in2.tar"];
+        let innames = vec!["in0.tar", "in1.tar"];
         for inname in &innames[..] {
             let infile = t!(fs::File::create(inname));
             let inar = Archive::new(infile);
@@ -305,6 +312,34 @@ mod tests {
             let outfile = t!(fs::File::open(outname));
             let outar = Archive::new(outfile);
             assert!(t!(outar.files()).count() == 0);
+        }
+    }
+
+    #[test]
+    #[adorn(intmp)]
+    fn simple_tars() {
+        let fnames = vec!["0", "1", "common"];
+        for fname in &fnames[..] {
+            let mut f = t!(fs::File::create(fname));
+            t!(f.write_all(fname.as_bytes()));
+        }
+
+        let innames = vec!["in1.tar", "in2.tar"];
+        for (i, inname) in (&innames[..]).iter().enumerate() {
+            let infile = t!(fs::File::create(inname));
+            let inar = Archive::new(infile);
+            t!(inar.append_path(format!("{}", i)));
+            t!(inar.append_path("common"));
+            t!(inar.finish());
+        }
+
+        commonise_tars(&innames[..]);
+
+        let outnames = vec!["common.tar", "individual_0.tar", "individual_1.tar"];
+        for outname in &outnames[..] {
+            let outfile = t!(fs::File::open(outname));
+            let outar = Archive::new(outfile);
+            assert!(t!(outar.files()).count() == 1);
         }
     }
 }
