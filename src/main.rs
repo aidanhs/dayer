@@ -6,6 +6,7 @@
 // Only allow one test directory at a time
 #![feature(static_mutex)]
 // Literal maps for test purposes
+#[cfg(test)]
 #[macro_use] extern crate maplit;
 
 extern crate tar;
