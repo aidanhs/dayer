@@ -302,21 +302,17 @@ mod tests {
     #[test]
     #[adorn(intmp)]
     fn empty_tars() {
-        let innames = vec!["in0.tar", "in1.tar"];
-        for inname in &innames[..] {
-            let infile = t!(fs::File::create(inname));
-            let inar = Archive::new(infile);
-            t!(inar.finish());
-        }
-
-        commonise_tars(&innames[..]);
-
-        let outnames = vec!["common.tar", "individual_0.tar", "individual_1.tar"];
-        for outname in &outnames[..] {
-            let outfile = t!(fs::File::open(outname));
-            let outar = Archive::new(outfile);
-            assert!(t!(outar.files()).count() == 0);
-        }
+        let filecontents = hashmap!{};
+        let infilelists = hashmap!{
+            "in0.tar" => vec![],
+            "in1.tar" => vec![],
+        };
+        let outfilelists = hashmap!{
+            "common.tar" => vec![],
+            "individual_0.tar" => vec![],
+            "individual_1.tar" => vec![],
+        };
+        test_commonise(filecontents, infilelists, outfilelists);
     }
 
     #[test]
@@ -370,7 +366,6 @@ mod tests {
                 let actualpath = t!(actualfile.header().path()).to_path_buf();
                 assert!(expectedpathstr == &actualpath.to_str().unwrap());
             }
-            assert!(t!(outar.files()).count() == 1);
         }
     }
 }
