@@ -1,5 +1,9 @@
 #![feature(path_relative_from)]
 
+// For test decorators
+#![feature(plugin, custom_attribute)]
+#![plugin(adorn)]
+
 extern crate tar;
 
 use std::collections::HashMap;
@@ -256,7 +260,7 @@ pub fn commonise_tars(tnames: &[&str]) {
 mod tests {
     extern crate tempdir;
 
-    use std::env::set_current_dir;
+    use std::env::{current_dir, set_current_dir};
     use std::fs;
 
     use self::tempdir::TempDir;
@@ -271,11 +275,17 @@ mod tests {
         })
     }
 
-    #[test]
-    fn empty_tars() {
-        let td = t!(TempDir::new("dayer"));
-        t!(set_current_dir(td.path()));
+    fn intmp<F>(f: F) where F: Fn() {
+        let old = current_dir().unwrap();
+        let td = TempDir::new("dayer").unwrap(); // destroyed at end of fn
+        set_current_dir(td.path()).unwrap();
+        f();
+        set_current_dir(old).unwrap();
+    }
 
+    #[test]
+    #[adorn(intmp)]
+    fn empty_tars() {
         let innames = vec!["in1.tar", "in2.tar"];
         for inname in &innames[..] {
             let infile = t!(fs::File::create(inname));
