@@ -344,7 +344,8 @@ mod tests {
             t!(inar.finish());
         }
 
-        let infilenames: Vec<_> = infilelists.keys().map(|s| *s).collect();
+        let mut infilenames: Vec<_> = infilelists.keys().map(|s| *s).collect();
+        infilenames.sort();
         commonise_tars(&infilenames[..]);
 
         let outfilelists = hashmap!{
