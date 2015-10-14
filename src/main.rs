@@ -117,6 +117,11 @@ fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>, F: Fn(&Path) -> tar:
 //   presumably it will pull parent directories up from the previous layer, does
 //   it grab children files as well?
 // - assert not more than one of the same name
+// - report files missed because of extended headers
+// - assert sane sequence of headers (x is followed by a normal file)
+// - handle extended headers
+// - assert it's a posix archives (i.e. dirs use type 5 rather than 1)
+// - ensure hard links don't get split across archives
 
 fn main() {
     let args: Vec<String> = env::args().collect();
