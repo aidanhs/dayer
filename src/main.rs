@@ -270,6 +270,7 @@ pub fn commonise_tars(tnames: &[&str]) {
 mod tests {
     extern crate tempdir;
 
+    use std::collections::HashMap;
     use std::env::{current_dir, set_current_dir};
     use std::fs;
     use std::io::prelude::*;
@@ -326,15 +327,27 @@ mod tests {
             "1" => "1content",
             "common" => "commoncontent",
         };
+        let infilelists = hashmap!{
+            "in1.tar" => vec!["common", "0"],
+            "in2.tar" => vec!["common", "1"],
+        };
+        let outfilelists = hashmap!{
+            "common.tar" => vec!["common"],
+            "individual_0.tar" => vec!["0"],
+            "individual_1.tar" => vec!["1"],
+        };
+        test_commonise(filecontents, infilelists, outfilelists);
+    }
+
+    fn test_commonise(filecontents: HashMap<&str, &str>,
+                      infilelists: HashMap<&str, Vec<&str>>,
+                      outfilelists: HashMap<&str, Vec<&str>>) {
+
         for (fname, fval) in filecontents.iter() {
             let mut f = t!(fs::File::create(fname));
             t!(f.write_all(fval.as_bytes()));
         }
 
-        let infilelists = hashmap!{
-            "in1.tar" => vec!["common", "0"],
-            "in2.tar" => vec!["common", "1"],
-        };
         for (inname, infilelist) in infilelists.iter() {
             let infile = t!(fs::File::create(inname));
             let inar = Archive::new(infile);
@@ -348,11 +361,6 @@ mod tests {
         infilenames.sort();
         commonise_tars(&infilenames[..]);
 
-        let outfilelists = hashmap!{
-            "common.tar" => vec!["common"],
-            "individual_0.tar" => vec!["0"],
-            "individual_1.tar" => vec!["1"],
-        };
         for (outname, outfilelist) in outfilelists.iter() {
             let outfile = t!(fs::File::open(outname));
             let outar = Archive::new(outfile);
