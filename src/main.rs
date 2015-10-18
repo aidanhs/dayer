@@ -271,12 +271,13 @@ mod tests {
     extern crate tempdir;
 
     use std::collections::HashMap;
-    use std::env::{current_dir, set_current_dir};
+    use std::env::set_current_dir;
     use std::fs;
     use std::io::prelude::*;
     use std::sync::{StaticMutex, MUTEX_INIT};
 
     use self::tempdir::TempDir;
+    use self::DirTreeEntry::*;
     use super::tar::Archive;
 
     use super::*;
@@ -290,19 +291,26 @@ mod tests {
 
     static TMPLOCK: StaticMutex = MUTEX_INIT;
 
+    // Does not put program back in original dir
     fn intmp<F>(f: F) where F: Fn() {
-        let _g = TMPLOCK.lock().unwrap(); // destroyed at end of fn
+        let mut _guard = match TMPLOCK.lock() { // destroyed at end of fn
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         let td = TempDir::new("dayer").unwrap(); // destroyed at end of fn
-        let old = current_dir().unwrap();
         set_current_dir(td.path()).unwrap();
         f();
-        set_current_dir(old).unwrap();
+    }
+
+    enum DirTreeEntry<'a> {
+        F(&'a str),
+        D,
     }
 
     #[test]
     #[adorn(intmp)]
     fn empty_tars() {
-        let filecontents = hashmap!{};
+        let filetree = hashmap!{};
         let infilelists = hashmap!{
             "in0.tar" => vec![],
             "in1.tar" => vec![],
@@ -312,16 +320,16 @@ mod tests {
             "individual_0.tar" => vec![],
             "individual_1.tar" => vec![],
         };
-        test_commonise(filecontents, infilelists, outfilelists);
+        test_commonise(filetree, infilelists, outfilelists);
     }
 
     #[test]
     #[adorn(intmp)]
     fn simple_tars() {
-        let filecontents = hashmap!{
-            "0" => "0content",
-            "1" => "1content",
-            "common" => "commoncontent",
+        let filetree = hashmap!{
+            "0" => F("0content"),
+            "1" => F("1content"),
+            "common" => F("commoncontent"),
         };
         let infilelists = hashmap!{
             "in1.tar" => vec!["common", "0"],
@@ -332,16 +340,47 @@ mod tests {
             "individual_0.tar" => vec!["0"],
             "individual_1.tar" => vec!["1"],
         };
-        test_commonise(filecontents, infilelists, outfilelists);
+        test_commonise(filetree, infilelists, outfilelists);
     }
 
-    fn test_commonise(filecontents: HashMap<&str, &str>,
+    #[test]
+    #[adorn(intmp)]
+    fn leading_dirs() {
+        let filetree = hashmap!{
+            "dir" => D,
+            "dir/0" => F("0content"),
+            "dir/1" => F("1content"),
+            "common" => F("commoncontent"),
+        };
+        let infilelists = hashmap!{
+            "in1.tar" => vec!["common", "dir", "dir/0"],
+            "in2.tar" => vec!["common", "dir", "dir/1"],
+        };
+        let outfilelists = hashmap!{
+            "common.tar" => vec!["common", "dir"],
+            "individual_0.tar" => vec!["dir", "dir/0"],
+            "individual_1.tar" => vec!["dir", "dir/1"],
+        };
+        test_commonise(filetree, infilelists, outfilelists);
+    }
+
+    fn test_commonise(filetree: HashMap<&str, DirTreeEntry>,
                       infilelists: HashMap<&str, Vec<&str>>,
                       outfilelists: HashMap<&str, Vec<&str>>) {
 
-        for (fname, fval) in filecontents.iter() {
-            let mut f = t!(fs::File::create(fname));
-            t!(f.write_all(fval.as_bytes()));
+        let mut fpaths: Vec<&str> = filetree.keys().map(|p| *p).collect();
+        fpaths.sort();
+        for path in fpaths.iter() {
+            let entry = &filetree[path];
+            match entry {
+                &F(content) => {
+                    let mut f = t!(fs::File::create(path));
+                    t!(f.write_all(content.as_bytes()))
+                },
+                &D => {
+                    t!(fs::create_dir(path))
+                },
+            }
         }
 
         for (inname, infilelist) in infilelists.iter() {
