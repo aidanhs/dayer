@@ -11,7 +11,7 @@
 
 extern crate tar;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -19,6 +19,7 @@ use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::ptr;
+use std::str;
 use tar::{Header, Archive};
 
 // https://github.com/rust-lang/rust/issues/13721
@@ -51,6 +52,41 @@ impl Clone for HashableHeader {
 }
 impl Eq for HashableHeader {}
 
+// octal_from in tar-rs
+fn truncate<'a>(slice: &'a [u8]) -> &'a [u8] {
+    match slice.iter().position(|i| *i == 0) {
+        Some(i) => &slice[..i],
+        None => slice,
+    }
+}
+fn decimal_from(slice: &[u8]) -> io::Result<u64> {
+    let num = match str::from_utf8(truncate(slice)) {
+        Ok(n) => n,
+        Err(_) => panic!("noo"),
+    };
+    match u64::from_str_radix(num.trim(), 10) {
+        Ok(n) => Ok(n),
+        Err(_) => panic!("noo"),
+    }
+}
+fn parse_extended_header_data(extended_header: &[u8]) -> HashMap<&str, &str> {
+    let mut data = extended_header;
+    let mut outmap: HashMap<&str, &str> = HashMap::new();
+    while data.len() != 0 {
+        let spacepos: usize = data.iter().position(|c| *c == b' ').unwrap();
+        let (sizeslice, restdata) = data.split_at(spacepos);
+        let size = decimal_from(sizeslice).unwrap();
+        let (spacekvslice, restdata2) = restdata.split_at(size as usize-sizeslice.len());
+        let kvslice = &spacekvslice[1..spacekvslice.len()-1];
+        let eqpos: usize = kvslice.iter().position(|c| *c == b'=').unwrap();
+        let (key, eqval) = kvslice.split_at(eqpos);
+        let val = &eqval[1..];
+        assert!(outmap.insert(str::from_utf8(key).unwrap(), str::from_utf8(val).unwrap()).is_none());
+        data = restdata2
+    }
+    outmap
+}
+
 fn get_header_map<'a>(arfiles: &'a mut Vec<tar::File<'a, fs::File>>) -> HashMap<HashableHeader, &'a mut tar::File<'a, fs::File>> {
     let mut arfilemap: HashMap<HashableHeader, &'a mut tar::File<'a, fs::File>> = HashMap::new();
     for file in arfiles.iter_mut() {
@@ -69,15 +105,14 @@ fn format_num_bytes(num: u64) -> String {
     }
 }
 
-fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>, F: Fn(&Path) -> tar::Header>(
+fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterator<Item=&'a mut tar::File<'b, fs::File>>, F: Fn(&Path) -> tar::Header>(
         outname: &str,
-        headeriter: I,
+        headeriter: I1,
+        verbatimiter: I2,
         headertofilemap: &mut HashMap<HashableHeader, &mut tar::File<fs::File>>,
         mkdir: F) {
 
     let outfile = fs::File::create(outname).unwrap();
-    // Can append even though it's not mutable
-    // https://github.com/alexcrichton/tar-rs/issues/31
     let outar = Archive::new(outfile);
 
     // Alphabetical ordering, lets us make assumptions about directory traversal
@@ -108,6 +143,12 @@ fn make_layer_tar<'a, I: Iterator<Item=&'a HashableHeader>, F: Fn(&Path) -> tar:
             lastdir = path.to_path_buf();
         }
     }
+    for af in verbatimiter {
+        let hheader = HashableHeader::new(af.header()).clone();
+        outar.append(&hheader.0, af).unwrap();
+        af.seek(io::SeekFrom::Start(0)).unwrap();
+    }
+
     outar.finish().unwrap();
 }
 
@@ -145,19 +186,79 @@ pub fn commonise_tars(tnames: &[&str]) {
         let file = fs::File::open(tname).unwrap();
         Archive::new(file)
     }).collect();
+    let mut ignoredfiless: Vec<Vec<tar::File<fs::File>>> = vec![];
     let mut arfiless: Vec<Vec<tar::File<fs::File>>> = ars.iter().zip(tnames).map(|(ar, tname)| {
         println!("Loading {}", tname);
+        let mut ignoredfiles: Vec<tar::File<fs::File>> = vec![];
+        // Can't handle extended headers at the moment - skip the next block if
+        // prefixed by an extended header
         let mut skipnext = false;
+        let mut extpath = PathBuf::new();
+        let emptypath = PathBuf::new();
+        // If we've skipped directories because of an extended header, exclude
+        // anything under that
+        let mut skipdirs: HashSet<PathBuf> = HashSet::new();
         let arfiles: Vec<_> = ar.files().unwrap().filter_map(|res| {
             let af = res.unwrap();
-            match af.header().link[0] {
-              b'g' => panic!("Cannot handle global extended header"),
-              b'x' => panic!("Cannot handle extended header"),
-              _ if skipnext => { skipnext = false; None },
-              _ => Some(af),
+            let ftype = af.header().link[0];
+            // Handle extended headers, skip other headers if necessary
+            if ftype == b'g' {
+                panic!("Cannot handle global extended header")
+            } else if ftype == b'x' {
+                assert!(!skipnext && extpath == emptypath);
+                skipnext = true;
+                let mut extdata = vec![];
+                unsafe { // TODO: just to dodge mutability requirement
+                    let afm = &mut *(&af as *const tar::File<fs::File> as *mut tar::File<fs::File>);
+                    afm.read_to_end(&mut extdata).unwrap();
+                    afm.seek(io::SeekFrom::Start(0)).unwrap();
+                }
+                let extheadmap = parse_extended_header_data(&extdata);
+                if extheadmap.contains_key("path") {
+                    extpath = PathBuf::from(extheadmap["path"]);
+                }
+                ignoredfiles.push(af);
+                None
+            // http://stackoverflow.com/questions/2078778/what-exactly-is-the-gnu-tar-longlink-trick
+            // https://golang.org/pkg/archive/tar/
+            } else if b'A' <= ftype && ftype <= b'Z' {
+                panic!("Unknown vendor-specific header: {}", ftype as char)
+            } else if skipnext {
+                if ftype == b'5' { // dir
+                    let headpath = af.header().path().unwrap().to_path_buf();
+                    assert!(
+                        ((headpath == emptypath) ^ (extpath == emptypath)) ||
+                        extpath.to_str().unwrap().starts_with(headpath.to_str().unwrap())
+                    );
+                    let path = if extpath != emptypath { &extpath } else { &headpath };
+                    // Normalise it https://github.com/rust-lang/rust/issues/29008
+                    skipdirs.insert(path.components().as_path().to_path_buf());
+                }
+                skipnext = false;
+                extpath = emptypath.clone();
+                ignoredfiles.push(af);
+                None
+            } else {
+                // Does the path need to be skipped because a parent is skipped?
+                {
+                    let path = af.header().path().unwrap().to_path_buf();
+                    assert!(path != emptypath);
+                    let mut prefix = path.parent();
+                    while prefix != None {
+                        let p = prefix.unwrap();
+                        if skipdirs.contains(p) {
+                            ignoredfiles.push(af);
+                            return None
+                        }
+                        prefix = p.parent();
+                    }
+                }
+                Some(af)
             }
         }).collect();
-        println!("Loading {}: found {} files", tname, arfiles.len());
+        println!("Loading {}: found {} files, ignored {}",
+                 tname, arfiles.len(), ignoredfiles.len());
+        ignoredfiless.push(ignoredfiles);
         arfiles
     }).collect();
 
@@ -245,11 +346,12 @@ pub fn commonise_tars(tnames: &[&str]) {
     };
     let outname = "common.tar";
     // It doesn't matter which head map, these are common files!
-    make_layer_tar(outname, p2result.iter(), arheadmaps.get_mut(0).unwrap(), &minimalmkdir);
+    make_layer_tar(outname, p2result.iter(), vec![].iter_mut(), arheadmaps.get_mut(0).unwrap(), &minimalmkdir);
     println!("Phase 3 complete: created {}", outname);
 
     println!("Phase 4: individual layer creation");
     let tonormpath = |h: &HashableHeader| {
+        // Normalise it https://github.com/rust-lang/rust/issues/29008
         h.0.path().unwrap().components().as_path().to_path_buf()
     };
     let commonmap: HashMap<PathBuf, &HashableHeader> = p2result
@@ -257,11 +359,13 @@ pub fn commonise_tars(tnames: &[&str]) {
     let thievingmkdir = |dirpath: &Path| {
         commonmap[dirpath].clone().0
     };
-    for (i, arheadmap) in arheadmaps.iter_mut().enumerate() {
+    for (i, (arheadmap, ignoredfiles)) in arheadmaps.iter_mut().zip(ignoredfiless.iter_mut()).enumerate() {
       let outname = format!("individual_{}.tar", i);
-      let outheads: Vec<_> = arheadmap
-          .keys().filter(|h| !commonmap.contains_key(&tonormpath(h))).map(|h| h.clone()).collect();
-      make_layer_tar(&outname, outheads.iter(), arheadmap, &thievingmkdir);
+      let outheads: Vec<_> = arheadmap.keys()
+          .filter(|h| !commonmap.contains_key(&tonormpath(h)))
+          .map(|h| h.clone())
+          .collect();
+      make_layer_tar(&outname, outheads.iter(), ignoredfiles.iter_mut(), arheadmap, &thievingmkdir);
     }
     println!("Phase 4 complete: created {} individual tars", arheadmaps.len());
 }
