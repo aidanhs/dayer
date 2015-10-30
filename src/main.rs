@@ -321,13 +321,23 @@ pub fn commonise_tars(tnames: &[&str]) {
     let p2sizestr = format_num_bytes(p2size);
     println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
 
-    println!("Phase 3: common layer creation");
+    println!("Phase 3a: preparing for layer creation");
+    let tonormpath = |h: &HashableHeader| {
+        // Normalise it https://github.com/rust-lang/rust/issues/29008
+        h.0.path().unwrap().components().as_path().to_path_buf()
+    };
+    let commonmap: HashMap<PathBuf, &HashableHeader> = p2result
+        .iter().map(|h| (tonormpath(h), h)).collect();
+    println!("Phase 3a complete");
+
+    println!("Phase 3b: common layer creation");
     // Create a holding-place directory for the common layer as it will be
-    // by the layer above
+    // overwritten by the layer above
     let minimalmkdir = |dirpath: &Path| {
         let mut newdir = tar::Header::new();
         newdir.set_path(&dirpath).unwrap();
-        newdir.set_mode(0);
+        // https://github.com/docker/docker/issues/783
+        newdir.set_mode(0o777);
         newdir.set_uid(0);
         newdir.set_gid(0);
         newdir.set_mtime(0);
@@ -340,15 +350,9 @@ pub fn commonise_tars(tnames: &[&str]) {
     let outname = "common.tar";
     // It doesn't matter which head map, these are common files!
     make_layer_tar(outname, p2result.iter(), vec![].iter_mut(), arheadmaps.get_mut(0).unwrap(), &minimalmkdir);
-    println!("Phase 3 complete: created {}", outname);
+    println!("Phase 3b complete: created {}", outname);
 
-    println!("Phase 4: individual layer creation");
-    let tonormpath = |h: &HashableHeader| {
-        // Normalise it https://github.com/rust-lang/rust/issues/29008
-        h.0.path().unwrap().components().as_path().to_path_buf()
-    };
-    let commonmap: HashMap<PathBuf, &HashableHeader> = p2result
-        .iter().map(|h| (tonormpath(h), h)).collect();
+    println!("Phase 3c: individual layer creation");
     let thievingmkdir = |dirpath: &Path| {
         commonmap[dirpath].clone().0
     };
@@ -360,7 +364,7 @@ pub fn commonise_tars(tnames: &[&str]) {
           .collect();
       make_layer_tar(&outname, outheads.iter(), ignoredfiles.iter_mut(), arheadmap, &thievingmkdir);
     }
-    println!("Phase 4 complete: created {} individual tars", arheadmaps.len());
+    println!("Phase 3c complete: created {} individual tars", arheadmaps.len());
 }
 
 #[cfg(test)]
