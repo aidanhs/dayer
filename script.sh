@@ -23,7 +23,7 @@ op_analyse() {
     [ ! -d "$savedir" ] && echo "Save directory does not exist" && return 1
     [ ! -f "$reposjson" ] && echo "Could not find repositories json" && return 1
 
-    echo "Identifying top layers"
+    echo "Identifying top layers from $reposjson"
     for repo in $($JQ -r 'keys | .[]' "$reposjson"); do
         echo "Repo: $repo"
         for tag in $(REPO="$repo" $JQ -r '.[env.REPO] | keys | .[]' "$reposjson"); do
@@ -68,21 +68,34 @@ op_analyse() {
 
     echo
     echo "Creating recombination commands:"
-    echo '```'
     local randid="$(dd if=/dev/urandom bs=1 count=6 2>/dev/null | sha1sum | cut -c 1-9)"
+    local scriptfile="script_$randid.sh"
     local dfile="Dockerfile_$randid"
-    echo "docker tag $commonparentlayerid parenttmp_$randid"
-    echo "echo -e 'FROM parenttmp_$randid\nCOPY common.tar /' > $dfile"
-    echo "tar c $dfile common.tar | docker build -f $dfile --tag commontmp_$randid -"
     local repotag_i=0
+    {
+    echo '#!/bin/bash'
+    echo 'set -o errexit'
+    echo 'set -o pipefail'
+    echo 'set -o nounset'
+    echo 'set -o xtrace'
+    } > $scriptfile
+    echo '```'
+    {
+    echo "docker tag $commonparentlayerid parenttmp_$randid"
+    echo "echo -e 'FROM parenttmp_$randid\nADD common.tar /' > $dfile"
+    echo "tar c $dfile common.tar | docker build -f $dfile --tag commontmp_$randid -"
     for repotag in $repotags; do
-        echo "echo -e 'FROM commontmp_$randid\nCOPY individual_$repotag_i.tar /' > $dfile"
+        echo "echo -e 'FROM commontmp_$randid\nADD individual_$repotag_i.tar /' > $dfile"
         echo "tar c $dfile individual_$repotag_i.tar | docker build -f $dfile --tag $repotag -"
         ((repotag_i=repotag_i+1))
     done
     echo "docker rmi commontmp_$randid parenttmp_$randid # just untagging"
     echo "rm $dfile"
+    } | tee -a $scriptfile
+    echo "rm $scriptfile" >> $scriptfile
     echo '```'
+    chmod +x $scriptfile
+    echo "(you can just run $scriptfile to recombine)"
 }
 
 usage() {
