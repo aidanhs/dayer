@@ -18,17 +18,15 @@ use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use std::ptr;
 use std::str;
 use tar::{Header, Archive};
 
 // https://github.com/rust-lang/rust/issues/13721
+#[derive(Clone)]
 struct HashableHeader(Header);
 impl HashableHeader {
     pub fn new(srcheader: &Header) -> HashableHeader {
-        let mut header: Header = Header::new();
-        unsafe { ptr::copy_nonoverlapping(srcheader, &mut header as *mut Header, 1) };
-        return HashableHeader(header);
+        return HashableHeader(srcheader.clone());
     }
     // stolen from tar-rs
     fn head_bytes(&self) -> &[u8; 512] {
@@ -43,11 +41,6 @@ impl Hash for HashableHeader {
 impl PartialEq for HashableHeader {
     fn eq(&self, other: &HashableHeader) -> bool {
         self.head_bytes()[..] == other.head_bytes()[..]
-    }
-}
-impl Clone for HashableHeader {
-    fn clone(&self) -> HashableHeader {
-        HashableHeader::new(&self.0)
     }
 }
 impl Eq for HashableHeader {}
