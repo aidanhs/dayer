@@ -99,7 +99,7 @@ You'll now have the commonised tars:
     -rw-rw-r-- 1 aidanhs aidanhs 2.9G Oct 30 13:16 individual_2.tar
     -rw-rw-r-- 1 aidanhs aidanhs 2.3G Oct 30 13:17 individual_3.tar
 
-So we're going to save about 1.5GB.
+So we're going to save about 1.5GB (uncompressed).
 
 All that's left is to recombine the layers:
 
@@ -124,4 +124,13 @@ dev
 
 ```
 DBG=0 && cargo build $([ $DBG = 0 ] && echo --release) && RUST_BACKTRACE=1 ./target/$([ $DBG = 0 ] && echo release || echo debug)/dayer <tars>
+```
+
+Analysing layers:
+```
+$ # Anything with >= double digits of MB.
+$ tar tvf 81f2400*/layer.tar | grep '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9] '
+
+$ # Size of files in tar directory. Assumes no filenames begin with a space. Make sure to have a trailing slash
+$ PREFIX=opt/ && tar tvf 81f2400*/layer.tar "$PREFIX" | awk '{print $6, $3}' | sed 's|'^"$PREFIX"'\([^/]*\).* \([0-9][0-9]*\)$|\1 \2|' | awk '{a[$1]+=$2}END{for (i in a){print i,a[i]}}' sort
 ```
