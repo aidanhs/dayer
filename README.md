@@ -6,15 +6,13 @@ Eventually your go-to tool for manipulating Docker image layers.
 commonise
 ---------
 
-Takes tarballs (it0...itN-1) and creates a common tarball (ct) and individual
-tarballs (ot0...otN-1) such that extracting ct and then otX on top is exactly
-the same as extracting itX.
-
-More legibly: finds files shared across multiple tars, puts them in a single tar
-and puts any leftover files into individual tars.
-
+Takes layers from multiple images and creates a layer containing any common
+files, with the goal of reducing the total size of all images.
 This is useful for creating a shared base for Docker images not created with
 layer-aware tools (e.g. Ansible).
+
+The implementation is not yet a full featured subcommand, just a shell script to
+walk you through the required steps.
 
 First, save multiple big images (note the big layer must be at the top) and
 extract them:
@@ -26,9 +24,9 @@ extract them:
 (it's worth keeping the tar around just in case it goes horribly wrong and you
 need to load your old images back in)
 
-Now use the script to help you figure out what to pass to dayer:
+Now use the script to help you figure out what to pass to `dayer commonise-tar`:
 
-    $ script.sh analyse layerdir
+    $ commonise.sh analyse layerdir
     Identifying top layers from layerdir/repositories
     Repo: bigimage1
         Tag: latest, ID: 2419dde0cfd992c34928ed6a3e3f94185d51d2ff4bd76bd118ea75b7afb3747d
@@ -67,9 +65,9 @@ Now use the script to help you figure out what to pass to dayer:
     ```
     (you can just run script_9f0d83ac7.sh to recombine)
 
-Pass the suggested tar arguments to dayer:
+Pass the suggested tar arguments to `dayer commonise-tar`:
 
-    $ dayer layerdir/{2419dde0c,556f274dd,8bb5900fa,ff20133e3}*/layer.tar
+    $ dayer commonise-tar layerdir/{2419dde0c,556f274dd,8bb5900fa,ff20133e3}*/layer.tar
     Opening tars
     Loading layerdir/2419dde0cfd992c34928ed6a3e3f94185d51d2ff4bd76bd118ea75b7afb3747d/layer.tar
     Loading layerdir/2419dde0cfd992c34928ed6a3e3f94185d51d2ff4bd76bd118ea75b7afb3747d/layer.tar: found 37861 files, ignored 1935
@@ -119,11 +117,25 @@ All that's left is to recombine the layers:
 
 Done! Your commonised images are tagged and ready to use!
 
+commonise-tar
+-------------
+
+```
+dayer commonise-tar TAR [TAR...]
+```
+
+Takes tarballs (it0...itN-1) and creates a common tarball (ct aka `common.tar`)
+and individual tarballs (otX aka `individualX.tar`) such that extracting
+ct and then otX on top is exactly the same as extracting itX.
+
+More legibly: finds files shared across multiple tars, puts them in a single tar
+and puts any leftover files into individual tars.
+
 dev
 ---
 
 ```
-DBG=0 && cargo build $([ $DBG = 0 ] && echo --release) && RUST_BACKTRACE=1 ./target/$([ $DBG = 0 ] && echo release || echo debug)/dayer <tars>
+DBG=0 && cargo build $([ $DBG = 0 ] && echo --release) && RUST_BACKTRACE=1 ./target/$([ $DBG = 0 ] && echo release || echo debug)/dayer commonise <tars>
 ```
 
 Analysing layers:

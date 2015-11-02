@@ -18,6 +18,7 @@ use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
+use std::process;
 use std::str;
 use tar::{Header, Archive};
 
@@ -164,10 +165,23 @@ fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterato
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 3 {
-        println!("Invalid number of args: {}", args.len());
+    if args.len() < 2 {
+        println!("No operation specified");
+        process::exit(1);
     }
-    let slargs: Vec<&str> = args[1..].iter().map(|s| &s[..]).collect();
+    if args[1] == "commonise" {
+        println!("Invalid operation - use shell script to commonise");
+        process::exit(1);
+    }
+    if args[1] != "commonise-tar" {
+        println!("Invalid operation - only commonise-tar supported");
+        process::exit(1);
+    }
+    if args.len() < 4 {
+        println!("Invalid number of args: {}", args.len());
+        process::exit(1);
+    }
+    let slargs: Vec<&str> = args[2..].iter().map(|s| &s[..]).collect();
     commonise_tars(&slargs[..]);
 }
 
