@@ -3,7 +3,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-JQ="$(dirname $0)/jq-1.5 --sort-keys"
+JQ="$(dirname $0)/jq --sort-keys"
 
 CMD="$0"
 SUBCMDHELP="Usage: $CMD [...]"
