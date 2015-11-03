@@ -5,10 +5,10 @@ Eventually your go-to tool for manipulating Docker image layers.
 
 Get the bits and pieces with:
 ```
-    $ curl -o dayer -sSL https://github.com/aidanhs/dayer/releases/download/v0.1.1/dayer-linux-x64
-    $ curl -o jq -sSL https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64
-    $ curl -O -sSL https://raw.githubusercontent.com/aidanhs/dayer/v0.1.1/commonise.sh
-    $ chmod +x dayer jq commonise.sh
+$ curl -o dayer -sSL https://github.com/aidanhs/dayer/releases/download/v0.1.1/dayer-linux-x64
+$ curl -o jq -sSL https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64
+$ curl -O -sSL https://raw.githubusercontent.com/aidanhs/dayer/v0.1.1/commonise.sh
+$ chmod +x dayer jq commonise.sh
 ```
 
 commonise
@@ -22,8 +22,8 @@ layer-aware tools (e.g. Ansible).
 The implementation is not yet a full featured subcommand, just a shell script to
 walk you through the required steps.
 
-First, save multiple big images (note the big layer must be at the top) and
-extract them:
+First, save multiple big images (note the layers you want to commonise must be
+at the top and all have the same parent) and extract them:
 
     $ docker save -o save.tar bigimage1 bigimage2 bigimage3 bigimage4
     $ mkdir layerdir
@@ -110,7 +110,6 @@ So we're going to save about 1.5GB (uncompressed).
 All that's left is to recombine the layers:
 
     $ ./script_9f0d83ac7.sh
-    root@edasich:/space/ahobsons/rust/dayer# ./script_9f0d83ac7.sh
     + docker tag 72703a0520b702adac8167f7aa25a8d2f58fe624937c16377e1a1b53a0519a86 parenttmp_9f0d83ac7
     + echo -e 'FROM parenttmp_9f0d83ac7\nADD common.tar /'
     + tar c Dockerfile_9f0d83ac7 common.tar
