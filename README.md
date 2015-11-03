@@ -1,5 +1,4 @@
-dayer
-=====
+# dayer
 
 Eventually your go-to tool for manipulating Docker image layers.
 
@@ -11,8 +10,9 @@ $ curl -O -sSL https://raw.githubusercontent.com/aidanhs/dayer/v0.1.1/commonise.
 $ chmod +x dayer jq commonise.sh
 ```
 
-commonise
----------
+## Commands
+
+### commonise
 
 Takes layers from multiple images and creates a layer containing any common
 files, with the goal of reducing the total size of all images.
@@ -164,8 +164,7 @@ e6e7167342ff        46 seconds ago  [...]  54.81 MB
 d1c0d97eaeb4        54 seconds ago  [...]  133 MB
 ```
 
-commonise-tar
--------------
+### commonise-tar
 
 ```
 dayer commonise-tar TAR [TAR...]
@@ -178,8 +177,10 @@ ct and then otX on top is exactly the same as extracting itX.
 More legibly: finds files shared across multiple tars, puts them in a single tar
 and puts any leftover files into individual tars.
 
-dev
----
+## Dev
+
+Building will currently fail unless you have checkouts of rust-adorn and tar-rs,
+as well as have a nightly version of Rust.
 
 ```
 DBG=0 && cargo build $([ $DBG = 0 ] && echo --release) && RUST_BACKTRACE=1 ./target/$([ $DBG = 0 ] && echo release || echo debug)/dayer commonise <tars>
