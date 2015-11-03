@@ -117,6 +117,46 @@ All that's left is to recombine the layers:
 
 Done! Your commonised images are tagged and ready to use!
 
+Here's a concrete example of doing it with Ubuntu 14.04.2 and 14.04.3. Note we
+had to find the layer with the actual data and make it the top layer.
+
+```
+$ docker pull ubuntu:14.04.2 && docker pull ubuntu:14.04.3
+[...]
+$ docker history ubuntu:14.04.2 | grep ADD
+c0394f4c2a7a  [...]  /bin/sh -c #(nop) ADD file:0a5fd3a659be172e86   188.2 MB
+$ docker history ubuntu:14.04.3 | grep ADD
+48731f0a6276  [...]  /bin/sh -c #(nop) ADD file:ed2337b3477da68f9b   187.8 MB
+$ docker tag c039 img1 && docker tag 4873 img2
+$ docker save -o save.tar img1 img2
+$ mkdir layerdir
+$ tar -C layerdir -xf save.tar
+$ ./commonise.sh analyse layerdir
+[...]
+All layers have a common parent: scratch
+[...]
+i.e. layerdir/{c0394f4c2,48731f0a6}*/layer.tar
+[...]
+(you can just run script_a358cb9f9.sh to recombine)
+$ ./dayer commonise-tar layerdir/{c0394f4c2,48731f0a6}*/layer.tar
+[...]
+$ du -sh *.tar
+133M    common.tar
+56M     individual_0.tar
+56M     individual_1.tar
+376M    save.tar
+$ ./script_a358cb9f9.sh
+[...]
+$ docker history img1
+IMAGE               CREATED         [...]  SIZE
+fee6e44c10a2        48 seconds ago  [...]  55.21 MB
+d1c0d97eaeb4        52 seconds ago  [...]  133 MB
+$ docker history img2
+IMAGE               CREATED         [...]  SIZE
+e6e7167342ff        46 seconds ago  [...]  54.81 MB
+d1c0d97eaeb4        54 seconds ago  [...]  133 MB
+```
+
 commonise-tar
 -------------
 
@@ -145,4 +185,9 @@ $ tar tvf 81f2400*/layer.tar | grep '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9] '
 
 $ # Size of files in tar directory. Assumes no filenames begin with a space. Make sure to have a trailing slash
 $ PREFIX=opt/ && tar tvf 81f2400*/layer.tar "$PREFIX" | awk '{print $6, $3}' | sed 's|'^"$PREFIX"'\([^/]*\).* \([0-9][0-9]*\)$|\1 \2|' | awk '{a[$1]+=$2}END{for (i in a){print i,a[i]}}' sort
+```
+
+Github release:
+```
+$ cargo build --target=x86_64-unknown-linux-musl --release
 ```
