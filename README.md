@@ -3,6 +3,14 @@ dayer
 
 Eventually your go-to tool for manipulating Docker image layers.
 
+Get the bits and pieces with:
+```
+    $ curl -o dayer -sSL https://github.com/aidanhs/dayer/releases/download/v0.1.1/dayer-linux-x64
+    $ curl -o jq -sSL https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64
+    $ curl -O -sSL https://raw.githubusercontent.com/aidanhs/dayer/v0.1.1/commonise.sh
+    $ chmod +x dayer jq commonise.sh
+```
+
 commonise
 ---------
 
