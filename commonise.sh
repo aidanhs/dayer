@@ -49,6 +49,7 @@ op_analyse() {
         fi
         [ "$commonparentlayerid" != "$parentlayerid" ] && echo "Parent mismatch for $layerid" && return 1
     done
+    [ "$commonparentlayerid" = null ] && commonparentlayerid="scratch"
     echo "All layers have a common parent: $commonparentlayerid"
 
     echo
@@ -81,15 +82,21 @@ op_analyse() {
     } > $scriptfile
     echo '```'
     {
-    echo "docker tag $commonparentlayerid parenttmp_$randid"
-    echo "echo -e 'FROM parenttmp_$randid\nADD common.tar /' > $dfile"
+    if [ "$commonparentlayerid" != scratch ]; then
+        echo "docker tag $commonparentlayerid parenttmp_$randid"
+        echo "echo -e 'FROM parenttmp_$randid\nADD common.tar /' > $dfile"
+    else
+        echo "echo -e 'FROM scratch\nADD common.tar /' > $dfile"
+    fi
     echo "tar c $dfile common.tar | docker build -f $dfile --tag commontmp_$randid -"
     for repotag in $repotags; do
         echo "echo -e 'FROM commontmp_$randid\nADD individual_$repotag_i.tar /' > $dfile"
         echo "tar c $dfile individual_$repotag_i.tar | docker build -f $dfile --tag $repotag -"
         ((repotag_i=repotag_i+1))
     done
-    echo "docker rmi commontmp_$randid parenttmp_$randid # just untagging"
+    if [ "$commonparentlayerid" != scratch ]; then
+        echo "docker rmi commontmp_$randid parenttmp_$randid # just untagging"
+    fi
     echo "rm $dfile"
     } | tee -a $scriptfile
     echo "rm $scriptfile" >> $scriptfile
