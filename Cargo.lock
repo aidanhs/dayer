@@ -2,15 +2,15 @@
 name = "dayer"
 version = "0.1.1"
 dependencies = [
- "adorn 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "adorn 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "maplit 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "tar 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tar 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempdir 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "adorn"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -47,6 +47,11 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "libc"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "maplit"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -63,11 +68,12 @@ dependencies = [
 
 [[package]]
 name = "tar"
-version = "0.3.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "filetime 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winapi 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

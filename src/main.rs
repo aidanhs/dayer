@@ -1,5 +1,3 @@
-#![feature(path_relative_from)]
-
 // For test decorators
 #![feature(plugin, custom_attribute)]
 #![plugin(adorn)]
@@ -81,8 +79,8 @@ fn parse_extended_header_data(extended_header: &[u8]) -> HashMap<&str, &str> {
     outmap
 }
 
-fn get_header_map<'a>(arfiles: &'a mut Vec<tar::File<'a, fs::File>>) -> HashMap<HashableHeader, &'a mut tar::File<'a, fs::File>> {
-    let mut arfilemap: HashMap<HashableHeader, &'a mut tar::File<'a, fs::File>> = HashMap::new();
+fn get_header_map<'a, 'b>(arfiles: &'a mut Vec<tar::Entry<'b, fs::File>>) -> HashMap<HashableHeader, &'a mut tar::Entry<'b, fs::File>> {
+    let mut arfilemap: HashMap<HashableHeader, &'a mut tar::Entry<'b, fs::File>> = HashMap::new();
     for file in arfiles.iter_mut() {
         arfilemap.insert(HashableHeader::new(file.header()), file);
     }
@@ -99,11 +97,11 @@ fn format_num_bytes(num: u64) -> String {
     }
 }
 
-fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterator<Item=&'a mut tar::File<'b, fs::File>>, F: Fn(&Path) -> tar::Header>(
+fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterator<Item=&'a mut tar::Entry<'b, fs::File>>, F: Fn(&Path) -> tar::Header>(
         outname: &str,
         headeriter: I1,
         verbatimiter: I2,
-        headertofilemap: &mut HashMap<HashableHeader, &mut tar::File<fs::File>>,
+        headertofilemap: &mut HashMap<HashableHeader, &mut tar::Entry<fs::File>>,
         mkdir: F) {
 
     let outfile = fs::File::create(outname).unwrap();
@@ -124,7 +122,7 @@ fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterato
             lastdir = lastdir.parent().unwrap().to_path_buf();
         }
         // Climb down creating dirs as necessary
-        let relpath = path.parent().unwrap().relative_from(&lastdir).unwrap().to_path_buf();
+        let relpath = path.parent().unwrap().strip_prefix(&lastdir).unwrap().to_path_buf();
         for relcomponent in relpath.iter() {
             lastdir.push(relcomponent);
             let newdir = mkdir(&lastdir);
@@ -193,10 +191,10 @@ pub fn commonise_tars(tnames: &[&str]) {
         let file = fs::File::open(tname).unwrap();
         Archive::new(file)
     }).collect();
-    let mut ignoredfiless: Vec<Vec<tar::File<fs::File>>> = vec![];
-    let mut arfiless: Vec<Vec<tar::File<fs::File>>> = ars.iter().zip(tnames).map(|(ar, tname)| {
+    let mut ignoredfiless: Vec<Vec<tar::Entry<fs::File>>> = vec![];
+    let mut arfiless: Vec<Vec<tar::Entry<fs::File>>> = ars.iter().zip(tnames).map(|(ar, tname)| {
         println!("Loading {}", tname);
-        let mut ignoredfiles: Vec<tar::File<fs::File>> = vec![];
+        let mut ignoredfiles: Vec<tar::Entry<fs::File>> = vec![];
         // Can't handle extended headers at the moment - skip the next block if
         // prefixed by an extended header
         let mut skipnext = false;
@@ -205,7 +203,7 @@ pub fn commonise_tars(tnames: &[&str]) {
         // If we've skipped directories because of an extended header, exclude
         // anything under that
         let mut skipdirs: HashSet<PathBuf> = HashSet::new();
-        let arfiles: Vec<_> = ar.files().unwrap().filter_map(|res| {
+        let arfiles: Vec<_> = ar.entries().unwrap().filter_map(|res| {
             let af = res.unwrap();
             let ftype = af.header().link[0];
             // Handle extended headers, skip other headers if necessary
@@ -216,7 +214,7 @@ pub fn commonise_tars(tnames: &[&str]) {
                 skipnext = true;
                 let mut extdata = vec![];
                 unsafe { // TODO: just to dodge mutability requirement
-                    let afm = &mut *(&af as *const tar::File<fs::File> as *mut tar::File<fs::File>);
+                    let afm = &mut *(&af as *const tar::Entry<fs::File> as *mut tar::Entry<fs::File>);
                     afm.read_to_end(&mut extdata).unwrap();
                     afm.seek(io::SeekFrom::Start(0)).unwrap();
                 }
@@ -270,7 +268,7 @@ pub fn commonise_tars(tnames: &[&str]) {
     }).collect();
 
     println!("Phase 1: metadata compare");
-    let mut arheadmaps: Vec<HashMap<HashableHeader, &mut tar::File<fs::File>>> =
+    let mut arheadmaps: Vec<HashMap<HashableHeader, &mut tar::Entry<fs::File>>> =
         arfiless.iter_mut().map(|arfiles| get_header_map(arfiles)).collect();
     // ideally would be &HashableHeader, but that borrows the maps as immutable
     // which then conflicts with the mutable borrow later because a borrow of
@@ -294,7 +292,7 @@ pub fn commonise_tars(tnames: &[&str]) {
     let mut p2result: Vec<HashableHeader> = vec![];
     // TODO: sort by offset in archive? means not seeking backwards
     for (i, hheader) in p1result.iter().enumerate() {
-        let mut files: Vec<&mut &mut tar::File<fs::File>> = arheadmaps.iter_mut().map(|arh|
+        let mut files: Vec<&mut &mut tar::Entry<fs::File>> = arheadmaps.iter_mut().map(|arh|
             arh.get_mut(hheader).unwrap()
         ).collect();
         // Do the files have the same contents?
@@ -514,8 +512,8 @@ mod tests {
         for (outname, outfilelist) in outfilelists.iter() {
             let outfile = t!(fs::File::open(outname));
             let outar = Archive::new(outfile);
-            assert!(outfilelist.len() == t!(outar.files()).count());
-            let acutalfilesiter = t!(outar.files()).map(|rf| t!(rf));
+            assert!(outfilelist.len() == t!(outar.entries()).count());
+            let acutalfilesiter = t!(outar.entries()).map(|rf| t!(rf));
             for (expectedpathstr, actualfile) in outfilelist.iter().zip(acutalfilesiter) {
                 let actualpath = t!(actualfile.header().path()).to_path_buf();
                 assert!(expectedpathstr == &actualpath.to_str().unwrap());

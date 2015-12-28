@@ -4,10 +4,8 @@ version = "0.1.1"
 authors = ["Aidan Hobson Sayers <aidanhs@cantab.net>"]
 
 [dependencies]
-# TODO: need 0.3.2 of this released for https://github.com/alexcrichton/tar-rs/pull/33
-tar = "0.3"
-# TODO: need 0.1.2 of this released for https://github.com/Manishearth/rust-adorn/pull/1
-adorn = "0.1.1" # wasn't working in dev-deps?
+tar = "0.3.3"
+adorn = "0.1.2" # wasn't working in dev-deps?
 
 [dev-dependencies]
 maplit = "0.1.2"
