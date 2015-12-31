@@ -144,6 +144,80 @@ fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterato
     outar.finish().unwrap();
 }
 
+fn get_archive_entries<'a>(ar: &'a Archive<fs::File>, tname: &str) -> (Vec<tar::Entry<'a, fs::File>>, Vec<tar::Entry<'a, fs::File>>) {
+    println!("Loading {}", tname);
+    let mut ignoredfiles: Vec<tar::Entry<fs::File>> = vec![];
+    // Can't handle extended headers at the moment - skip the next block if
+    // prefixed by an extended header
+    let mut skipnext = false;
+    let mut extpath = PathBuf::new();
+    let emptypath = PathBuf::new();
+    // If we've skipped directories because of an extended header, exclude
+    // anything under that
+    let mut skipdirs: HashSet<PathBuf> = HashSet::new();
+    let arfiles: Vec<_> = ar.entries().unwrap().filter_map(|res| {
+        let af = res.unwrap();
+        let ftype = af.header().link[0];
+        // Handle extended headers, skip other headers if necessary
+        if ftype == b'g' {
+            panic!("Cannot handle global extended header")
+        } else if ftype == b'x' {
+            assert!(!skipnext && extpath == emptypath);
+            skipnext = true;
+            let mut extdata = vec![];
+            unsafe { // TODO: just to dodge mutability requirement
+                let afm = &mut *(&af as *const tar::Entry<fs::File> as *mut tar::Entry<fs::File>);
+                afm.read_to_end(&mut extdata).unwrap();
+                afm.seek(io::SeekFrom::Start(0)).unwrap();
+            }
+            let extheadmap = parse_extended_header_data(&extdata);
+            if extheadmap.contains_key("path") {
+                extpath = PathBuf::from(extheadmap["path"]);
+            }
+            ignoredfiles.push(af);
+            None
+        // http://stackoverflow.com/questions/2078778/what-exactly-is-the-gnu-tar-longlink-trick
+        // https://golang.org/pkg/archive/tar/
+        } else if b'A' <= ftype && ftype <= b'Z' {
+            panic!("Unknown vendor-specific header: {}", ftype as char)
+        } else if skipnext {
+            if ftype == b'5' { // dir
+                let headpath = af.header().path().unwrap().to_path_buf();
+                assert!(
+                    ((headpath == emptypath) ^ (extpath == emptypath)) ||
+                    extpath.to_str().unwrap().starts_with(headpath.to_str().unwrap())
+                );
+                let path = if extpath != emptypath { &extpath } else { &headpath };
+                // Normalise it https://github.com/rust-lang/rust/issues/29008
+                skipdirs.insert(path.components().as_path().to_path_buf());
+            }
+            skipnext = false;
+            extpath = emptypath.clone();
+            ignoredfiles.push(af);
+            None
+        } else {
+            // Does the path need to be skipped because a parent is skipped?
+            {
+                let path = af.header().path().unwrap().to_path_buf();
+                assert!(path != emptypath);
+                let mut prefix = path.parent();
+                while prefix != None {
+                    let p = prefix.unwrap();
+                    if skipdirs.contains(p) {
+                        ignoredfiles.push(af);
+                        return None
+                    }
+                    prefix = p.parent();
+                }
+            }
+            Some(af)
+        }
+    }).collect();
+    println!("Loading {}: found {} files, ignored {}",
+             tname, arfiles.len(), ignoredfiles.len());
+    (arfiles, ignoredfiles)
+}
+
 // TODO
 // - check ustar at beginning
 // - check paths are not absolute
@@ -191,81 +265,13 @@ pub fn commonise_tars(tnames: &[&str]) {
         let file = fs::File::open(tname).unwrap();
         Archive::new(file)
     }).collect();
+    let mut arfiless:      Vec<Vec<tar::Entry<fs::File>>> = vec![];
     let mut ignoredfiless: Vec<Vec<tar::Entry<fs::File>>> = vec![];
-    let mut arfiless: Vec<Vec<tar::Entry<fs::File>>> = ars.iter().zip(tnames).map(|(ar, tname)| {
-        println!("Loading {}", tname);
-        let mut ignoredfiles: Vec<tar::Entry<fs::File>> = vec![];
-        // Can't handle extended headers at the moment - skip the next block if
-        // prefixed by an extended header
-        let mut skipnext = false;
-        let mut extpath = PathBuf::new();
-        let emptypath = PathBuf::new();
-        // If we've skipped directories because of an extended header, exclude
-        // anything under that
-        let mut skipdirs: HashSet<PathBuf> = HashSet::new();
-        let arfiles: Vec<_> = ar.entries().unwrap().filter_map(|res| {
-            let af = res.unwrap();
-            let ftype = af.header().link[0];
-            // Handle extended headers, skip other headers if necessary
-            if ftype == b'g' {
-                panic!("Cannot handle global extended header")
-            } else if ftype == b'x' {
-                assert!(!skipnext && extpath == emptypath);
-                skipnext = true;
-                let mut extdata = vec![];
-                unsafe { // TODO: just to dodge mutability requirement
-                    let afm = &mut *(&af as *const tar::Entry<fs::File> as *mut tar::Entry<fs::File>);
-                    afm.read_to_end(&mut extdata).unwrap();
-                    afm.seek(io::SeekFrom::Start(0)).unwrap();
-                }
-                let extheadmap = parse_extended_header_data(&extdata);
-                if extheadmap.contains_key("path") {
-                    extpath = PathBuf::from(extheadmap["path"]);
-                }
-                ignoredfiles.push(af);
-                None
-            // http://stackoverflow.com/questions/2078778/what-exactly-is-the-gnu-tar-longlink-trick
-            // https://golang.org/pkg/archive/tar/
-            } else if b'A' <= ftype && ftype <= b'Z' {
-                panic!("Unknown vendor-specific header: {}", ftype as char)
-            } else if skipnext {
-                if ftype == b'5' { // dir
-                    let headpath = af.header().path().unwrap().to_path_buf();
-                    assert!(
-                        ((headpath == emptypath) ^ (extpath == emptypath)) ||
-                        extpath.to_str().unwrap().starts_with(headpath.to_str().unwrap())
-                    );
-                    let path = if extpath != emptypath { &extpath } else { &headpath };
-                    // Normalise it https://github.com/rust-lang/rust/issues/29008
-                    skipdirs.insert(path.components().as_path().to_path_buf());
-                }
-                skipnext = false;
-                extpath = emptypath.clone();
-                ignoredfiles.push(af);
-                None
-            } else {
-                // Does the path need to be skipped because a parent is skipped?
-                {
-                    let path = af.header().path().unwrap().to_path_buf();
-                    assert!(path != emptypath);
-                    let mut prefix = path.parent();
-                    while prefix != None {
-                        let p = prefix.unwrap();
-                        if skipdirs.contains(p) {
-                            ignoredfiles.push(af);
-                            return None
-                        }
-                        prefix = p.parent();
-                    }
-                }
-                Some(af)
-            }
-        }).collect();
-        println!("Loading {}: found {} files, ignored {}",
-                 tname, arfiles.len(), ignoredfiles.len());
+    for (ar, tname) in ars.iter().zip(tnames) {
+        let (arfiles, ignoredfiles) = get_archive_entries(ar, tname);
+        arfiless.push(arfiles);
         ignoredfiless.push(ignoredfiles);
-        arfiles
-    }).collect();
+    }
 
     println!("Phase 1: metadata compare");
     let mut arheadmaps: Vec<HashMap<HashableHeader, &mut tar::Entry<fs::File>>> =
