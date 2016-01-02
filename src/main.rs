@@ -87,6 +87,18 @@ fn get_header_map<'a, 'b>(arfiles: &'a mut Vec<tar::Entry<'b, fs::File>>) -> Has
     arfilemap
 }
 
+fn find_common_keys<K, V>(hms: &Vec<HashMap<K, V>>) -> Vec<K> where K: Clone + Eq + Hash {
+    let mut keycount: HashMap<&K, usize> = HashMap::new();
+    for key in hms.iter().flat_map(|hm| hm.keys()) {
+      let counter = keycount.entry(key).or_insert(0);
+      *counter += 1;
+    }
+    let numhms = hms.len();
+    keycount.iter().filter_map(|(key, count)| {
+        if *count != numhms { None } else { Some((*key).clone()) }
+    }).collect()
+}
+
 fn format_num_bytes(num: u64) -> String {
     if num > 99 * 1024 * 1024 {
         format!("~{}MB", num / 1024 / 1024)
@@ -258,8 +270,6 @@ fn main() {
 }
 
 pub fn commonise_tars(tnames: &[&str]) {
-    let numars = tnames.len();
-
     println!("Opening tars");
     let ars: Vec<tar::Archive<_>> = tnames.iter().map(|tname| {
         let file = fs::File::open(tname).unwrap();
@@ -280,24 +290,15 @@ pub fn commonise_tars(tnames: &[&str]) {
     // which then conflicts with the mutable borrow later because a borrow of
     // either keys or values applies to the whole hashmap
     // https://github.com/rust-lang/rfcs/issues/1215
-    let p1result: Vec<HashableHeader> = {
-        let mut headercount: HashMap<&HashableHeader, usize> = HashMap::new();
-        for key in arheadmaps.iter().flat_map(|hm| hm.keys()) {
-          let counter = headercount.entry(key).or_insert(0);
-          *counter += 1;
-        }
-        headercount.iter().filter_map(|(hheader, count)| {
-            if *count != numars { None } else { Some((*hheader).clone()) }
-        }).collect()
-    };
-    let p1size = p1result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
-    let p1sizestr = format_num_bytes(p1size);
-    println!("Phase 1 complete: possible {} files with {}", p1result.len(), p1sizestr);
+    let commonheaders: Vec<HashableHeader> = find_common_keys(&arheadmaps);
+    let p1commonsize = commonheaders.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
+    let p1commonsizestr = format_num_bytes(p1commonsize);
+    println!("Phase 1 complete: possible {} files with {}", commonheaders.len(), p1commonsizestr);
 
     println!("Phase 2: data compare");
     let mut p2result: Vec<HashableHeader> = vec![];
     // TODO: sort by offset in archive? means not seeking backwards
-    for (i, hheader) in p1result.iter().enumerate() {
+    for (i, hheader) in commonheaders.iter().enumerate() {
         let mut files: Vec<&mut &mut tar::Entry<_>> = arheadmaps.iter_mut().map(|arh|
             arh.get_mut(hheader).unwrap()
         ).collect();
