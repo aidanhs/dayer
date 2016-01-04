@@ -25,7 +25,7 @@ use tar::{Header, Archive};
 struct HashableHeader(Header);
 impl HashableHeader {
     pub fn new(srcheader: &Header) -> HashableHeader {
-        return HashableHeader(srcheader.clone());
+        HashableHeader(srcheader.clone())
     }
     // stolen from tar-rs
     fn head_bytes(&self) -> &[u8; 512] {
@@ -45,7 +45,7 @@ impl PartialEq for HashableHeader {
 impl Eq for HashableHeader {}
 
 // octal_from in tar-rs
-fn truncate<'a>(slice: &'a [u8]) -> &'a [u8] {
+fn truncate(slice: &[u8]) -> &[u8] {
     match slice.iter().position(|i| *i == 0) {
         Some(i) => &slice[..i],
         None => slice,
@@ -87,7 +87,7 @@ fn get_header_map<'a, 'b>(arfiles: &'a mut Vec<tar::Entry<'b, fs::File>>) -> Has
     arfilemap
 }
 
-fn find_common_keys<K, V>(hms: &Vec<HashMap<K, V>>) -> Vec<K> where K: Clone + Eq + Hash {
+fn find_common_keys<K, V>(hms: &[HashMap<K, V>]) -> Vec<K> where K: Clone + Eq + Hash {
     let mut keycount: HashMap<&K, usize> = HashMap::new();
     for key in hms.iter().flat_map(|hm| hm.keys()) {
       let counter = keycount.entry(key).or_insert(0);
@@ -109,7 +109,7 @@ fn format_num_bytes(num: u64) -> String {
     }
 }
 
-fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterator<Item=&'a mut tar::Entry<'b, fs::File>>, F: Fn(&Path) -> tar::Header>(
+fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterator<Item=&'a mut tar::Entry<'b, fs::File>>, F: Fn(&Path) -> tar::Header> (
         outname: &str,
         headeriter: I1,
         verbatimiter: I2,
@@ -125,7 +125,7 @@ fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterato
 
     let mut lastdir = PathBuf::new();
     // TODO: set trailing slash of dirs for belt and braces?
-    for hheader in headers.iter() {
+    for hheader in &headers {
         let header = &hheader.0;
         assert!(&header.ustar[..5] == b"ustar"); // TODO: get this as public?
         let path = header.path().unwrap();
@@ -323,7 +323,7 @@ pub fn commonise_tars(tnames: &[&str]) {
                 }
                 numread
             };
-            for bf in buffiles.iter_mut() {
+            for bf in &mut buffiles {
                 bf.consume(numread);
             }
         }
@@ -332,7 +332,7 @@ pub fn commonise_tars(tnames: &[&str]) {
         }
         io::stdout().flush().unwrap();
         // Leave the file how we found it
-        for bf in buffiles.iter_mut() {
+        for bf in &mut buffiles {
             bf.seek(io::SeekFrom::Start(0)).unwrap();
         }
     }
@@ -379,7 +379,7 @@ pub fn commonise_tars(tnames: &[&str]) {
       let outname = format!("individual_{}.tar", i);
       let outheads: Vec<_> = arheadmap.keys()
           .filter(|h| !commonmap.contains_key(&tonormpath(h)))
-          .map(|h| h.clone())
+          .cloned()
           .collect();
       make_layer_tar(&outname, outheads.iter(), ignoredfiles.iter_mut(), arheadmap, &thievingmkdir);
     }
