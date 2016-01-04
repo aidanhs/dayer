@@ -322,9 +322,9 @@ pub fn commonise_tars(tnames: &[&str]) {
     let mut p2result: Vec<HashableHeader> = vec![];
     // TODO: sort by offset in archive? means not seeking backwards
     for (i, hheader) in commonheaders.iter().enumerate() {
-        let mut files: Vec<&mut &mut tar::Entry<_>> = arheadmaps.iter_mut()
-                                                                .map(|arh| {
-                                                                    arh.get_mut(hheader).unwrap()
+        let mut files: Vec<&mut tar::Entry<_>> = arheadmaps.iter_mut()
+                                                                .map(|arhm| {
+                                                                    &mut **arhm.get_mut(hheader).unwrap()
                                                                 })
                                                                 .collect();
         // Do the files have the same contents?
