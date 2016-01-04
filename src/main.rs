@@ -5,7 +5,8 @@
 #![feature(static_mutex)]
 // Literal maps for test purposes
 #[cfg(test)]
-#[macro_use] extern crate maplit;
+#[macro_use]
+extern crate maplit;
 
 extern crate tar;
 
@@ -68,18 +69,20 @@ fn parse_extended_header_data(extended_header: &[u8]) -> HashMap<&str, &str> {
         let spacepos: usize = data.iter().position(|c| *c == b' ').unwrap();
         let (sizeslice, restdata) = data.split_at(spacepos);
         let size = decimal_from(sizeslice).unwrap();
-        let (spacekvslice, restdata2) = restdata.split_at(size as usize-sizeslice.len());
-        let kvslice = &spacekvslice[1..spacekvslice.len()-1];
+        let (spacekvslice, restdata2) = restdata.split_at(size as usize - sizeslice.len());
+        let kvslice = &spacekvslice[1..spacekvslice.len() - 1];
         let eqpos: usize = kvslice.iter().position(|c| *c == b'=').unwrap();
         let (key, eqval) = kvslice.split_at(eqpos);
         let val = &eqval[1..];
-        assert!(outmap.insert(str::from_utf8(key).unwrap(), str::from_utf8(val).unwrap()).is_none());
+        assert!(outmap.insert(str::from_utf8(key).unwrap(), str::from_utf8(val).unwrap())
+                      .is_none());
         data = restdata2
     }
     outmap
 }
 
-fn get_header_map<'a, 'b>(arfiles: &'a mut Vec<tar::Entry<'b, fs::File>>) -> HashMap<HashableHeader, &'a mut tar::Entry<'b, fs::File>> {
+fn get_header_map<'a, 'b>(arfiles: &'a mut Vec<tar::Entry<'b, fs::File>>)
+                          -> HashMap<HashableHeader, &'a mut tar::Entry<'b, fs::File>> {
     let mut arfilemap: HashMap<HashableHeader, &'a mut tar::Entry<'b, _>> = HashMap::new();
     for file in arfiles.iter_mut() {
         arfilemap.insert(HashableHeader::new(file.header()), file);
@@ -87,16 +90,24 @@ fn get_header_map<'a, 'b>(arfiles: &'a mut Vec<tar::Entry<'b, fs::File>>) -> Has
     arfilemap
 }
 
-fn find_common_keys<K, V>(hms: &[HashMap<K, V>]) -> Vec<K> where K: Clone + Eq + Hash {
+fn find_common_keys<K, V>(hms: &[HashMap<K, V>]) -> Vec<K>
+    where K: Clone + Eq + Hash
+{
     let mut keycount: HashMap<&K, usize> = HashMap::new();
     for key in hms.iter().flat_map(|hm| hm.keys()) {
-      let counter = keycount.entry(key).or_insert(0);
-      *counter += 1;
+        let counter = keycount.entry(key).or_insert(0);
+        *counter += 1;
     }
     let numhms = hms.len();
-    keycount.iter().filter_map(|(key, count)| {
-        if *count != numhms { None } else { Some((*key).clone()) }
-    }).collect()
+    keycount.iter()
+            .filter_map(|(key, count)| {
+                if *count != numhms {
+                    None
+                } else {
+                    Some((*key).clone())
+                }
+            })
+            .collect()
 }
 
 fn format_num_bytes(num: u64) -> String {
@@ -109,12 +120,16 @@ fn format_num_bytes(num: u64) -> String {
     }
 }
 
-fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterator<Item=&'a mut tar::Entry<'b, fs::File>>, F: Fn(&Path) -> tar::Header> (
-        outname: &str,
-        headeriter: I1,
-        verbatimiter: I2,
-        headertofilemap: &mut HashMap<HashableHeader, &mut tar::Entry<fs::File>>,
-        mkdir: F) {
+fn make_layer_tar<'a,
+                  'b: 'a,
+                  I1: Iterator<Item = &'a HashableHeader>,
+                  I2: Iterator<Item = &'a mut tar::Entry<'b, fs::File>>,
+                  F: Fn(&Path) -> tar::Header>
+    (outname: &str,
+     headeriter: I1,
+     verbatimiter: I2,
+     headertofilemap: &mut HashMap<HashableHeader, &mut tar::Entry<fs::File>>,
+     mkdir: F) {
 
     let outfile = fs::File::create(outname).unwrap();
     let outar = Archive::new(outfile);
@@ -156,7 +171,9 @@ fn make_layer_tar<'a, 'b: 'a, I1: Iterator<Item=&'a HashableHeader>, I2: Iterato
     outar.finish().unwrap();
 }
 
-fn get_archive_entries<'a>(ar: &'a Archive<fs::File>, tname: &str) -> (Vec<tar::Entry<'a, fs::File>>, Vec<tar::Entry<'a, fs::File>>) {
+fn get_archive_entries<'a>(ar: &'a Archive<fs::File>,
+                           tname: &str)
+                           -> (Vec<tar::Entry<'a, fs::File>>, Vec<tar::Entry<'a, fs::File>>) {
     println!("Loading {}", tname);
     let mut ignoredfiles: Vec<tar::Entry<_>> = vec![];
     // Can't handle extended headers at the moment - skip the next block if
@@ -226,7 +243,9 @@ fn get_archive_entries<'a>(ar: &'a Archive<fs::File>, tname: &str) -> (Vec<tar::
         }
     }).collect();
     println!("Loading {}: found {} files, ignored {}",
-             tname, arfiles.len(), ignoredfiles.len());
+             tname,
+             arfiles.len(),
+             ignoredfiles.len());
     (arfiles, ignoredfiles)
 }
 
@@ -271,11 +290,13 @@ fn main() {
 
 pub fn commonise_tars(tnames: &[&str]) {
     println!("Opening tars");
-    let ars: Vec<tar::Archive<_>> = tnames.iter().map(|tname| {
-        let file = fs::File::open(tname).unwrap();
-        Archive::new(file)
-    }).collect();
-    let mut arfiless:      Vec<Vec<tar::Entry<_>>> = vec![];
+    let ars: Vec<tar::Archive<_>> = tnames.iter()
+                                          .map(|tname| {
+                                              let file = fs::File::open(tname).unwrap();
+                                              Archive::new(file)
+                                          })
+                                          .collect();
+    let mut arfiless: Vec<Vec<tar::Entry<_>>> = vec![];
     let mut ignoredfiless: Vec<Vec<tar::Entry<_>>> = vec![];
     for (ar, tname) in ars.iter().zip(tnames) {
         let (arfiles, ignoredfiles) = get_archive_entries(ar, tname);
@@ -293,33 +314,39 @@ pub fn commonise_tars(tnames: &[&str]) {
     let commonheaders: Vec<HashableHeader> = find_common_keys(&arheadmaps);
     let p1commonsize = commonheaders.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p1commonsizestr = format_num_bytes(p1commonsize);
-    println!("Phase 1 complete: possible {} files with {}", commonheaders.len(), p1commonsizestr);
+    println!("Phase 1 complete: possible {} files with {}",
+             commonheaders.len(),
+             p1commonsizestr);
 
     println!("Phase 2: data compare");
     let mut p2result: Vec<HashableHeader> = vec![];
     // TODO: sort by offset in archive? means not seeking backwards
     for (i, hheader) in commonheaders.iter().enumerate() {
-        let mut files: Vec<&mut &mut tar::Entry<_>> = arheadmaps.iter_mut().map(|arh|
-            arh.get_mut(hheader).unwrap()
-        ).collect();
+        let mut files: Vec<&mut &mut tar::Entry<_>> = arheadmaps.iter_mut()
+                                                                .map(|arh| {
+                                                                    arh.get_mut(hheader).unwrap()
+                                                                })
+                                                                .collect();
         // Do the files have the same contents?
         // Note we've verified they have the same size by now
         // This approach is slow:
         //     if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
-        let mut buffiles: Vec<_> = files.iter_mut().map(|f|
-            io::BufReader::with_capacity(512, f)
-        ).collect();
+        let mut buffiles: Vec<_> = files.iter_mut()
+                                        .map(|f| io::BufReader::with_capacity(512, f))
+                                        .collect();
         loop {
             let numread = {
-                let bufs: Vec<&[u8]> = buffiles.iter_mut().map(|bf| bf.fill_buf().unwrap()).collect();
+                let bufs: Vec<&[u8]> = buffiles.iter_mut()
+                                               .map(|bf| bf.fill_buf().unwrap())
+                                               .collect();
                 let basebuf = bufs[0];
                 let numread = basebuf.len();
                 if numread == 0 {
                     p2result.push(hheader.clone());
-                    break
+                    break;
                 }
                 if !bufs.iter().all(|buf| &basebuf == buf) {
-                    break
+                    break;
                 }
                 numread
             };
@@ -338,15 +365,18 @@ pub fn commonise_tars(tnames: &[&str]) {
     }
     let p2size = p2result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
     let p2sizestr = format_num_bytes(p2size);
-    println!("Phase 2 complete: actual {} files with {}", p2result.len(), p2sizestr);
+    println!("Phase 2 complete: actual {} files with {}",
+             p2result.len(),
+             p2sizestr);
 
     println!("Phase 3a: preparing for layer creation");
     let tonormpath = |h: &HashableHeader| {
         // Normalise it https://github.com/rust-lang/rust/issues/29008
         h.0.path().unwrap().components().as_path().to_path_buf()
     };
-    let commonmap: HashMap<PathBuf, &HashableHeader> = p2result
-        .iter().map(|h| (tonormpath(h), h)).collect();
+    let commonmap: HashMap<PathBuf, &HashableHeader> = p2result.iter()
+                                                               .map(|h| (tonormpath(h), h))
+                                                               .collect();
     println!("Phase 3a complete");
 
     println!("Phase 3b: common layer creation");
@@ -368,22 +398,31 @@ pub fn commonise_tars(tnames: &[&str]) {
     };
     let outname = "common.tar";
     // It doesn't matter which head map, these are common files!
-    make_layer_tar(outname, p2result.iter(), vec![].iter_mut(), arheadmaps.get_mut(0).unwrap(), &minimalmkdir);
+    make_layer_tar(outname,
+                   p2result.iter(),
+                   vec![].iter_mut(),
+                   arheadmaps.get_mut(0).unwrap(),
+                   &minimalmkdir);
     println!("Phase 3b complete: created {}", outname);
 
     println!("Phase 3c: individual layer creation");
-    let thievingmkdir = |dirpath: &Path| {
-        commonmap[dirpath].clone().0
-    };
-    for (i, (arheadmap, ignoredfiles)) in arheadmaps.iter_mut().zip(ignoredfiless.iter_mut()).enumerate() {
-      let outname = format!("individual_{}.tar", i);
-      let outheads: Vec<_> = arheadmap.keys()
-          .filter(|h| !commonmap.contains_key(&tonormpath(h)))
-          .cloned()
-          .collect();
-      make_layer_tar(&outname, outheads.iter(), ignoredfiles.iter_mut(), arheadmap, &thievingmkdir);
+    let thievingmkdir = |dirpath: &Path| commonmap[dirpath].clone().0;
+    for (i, (arheadmap, ignoredfiles)) in arheadmaps.iter_mut()
+                                                    .zip(ignoredfiless.iter_mut())
+                                                    .enumerate() {
+        let outname = format!("individual_{}.tar", i);
+        let outheads: Vec<_> = arheadmap.keys()
+                                        .filter(|h| !commonmap.contains_key(&tonormpath(h)))
+                                        .cloned()
+                                        .collect();
+        make_layer_tar(&outname,
+                       outheads.iter(),
+                       ignoredfiles.iter_mut(),
+                       arheadmap,
+                       &thievingmkdir);
     }
-    println!("Phase 3c complete: created {} individual tars", arheadmaps.len());
+    println!("Phase 3c complete: created {} individual tars",
+             arheadmaps.len());
 }
 
 #[cfg(test)]
@@ -412,7 +451,9 @@ mod tests {
     static TMPLOCK: StaticMutex = MUTEX_INIT;
 
     // Does not put program back in original dir
-    fn intmp<F>(f: F) where F: Fn() {
+    fn intmp<F>(f: F)
+        where F: Fn()
+    {
         let mut _guard = match TMPLOCK.lock() { // destroyed at end of fn
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -496,10 +537,8 @@ mod tests {
                 &F(content) => {
                     let mut f = t!(fs::File::create(path));
                     t!(f.write_all(content.as_bytes()))
-                },
-                &D => {
-                    t!(fs::create_dir(path))
-                },
+                }
+                &D => t!(fs::create_dir(path)),
             }
         }
 
