@@ -110,6 +110,35 @@ fn find_common_keys<K, V>(hms: &[HashMap<K, V>]) -> Vec<K>
             .collect()
 }
 
+fn readers_identical<R>(rs: &mut [R]) -> bool
+    where R: Read
+{
+    // This approach is slow:
+    // if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
+    let mut brs: Vec<_> = rs.iter_mut()
+                            .map(|r| io::BufReader::with_capacity(512, r))
+                            .collect();
+    loop {
+        let numread = {
+            let bufs: Vec<_> = brs.iter_mut()
+                                  .map(|buf| buf.fill_buf().unwrap())
+                                  .collect();
+            let basebuf = bufs[0];
+            let numread = basebuf.len();
+            if numread == 0 {
+                return true;
+            }
+            if !bufs.iter().all(|buf| &basebuf == buf) {
+                return false;
+            }
+            numread
+        };
+        for br in &mut brs {
+            br.consume(numread);
+        }
+    }
+}
+
 fn format_num_bytes(num: u64) -> String {
     if num > 99 * 1024 * 1024 {
         format!("~{}MB", num / 1024 / 1024)
@@ -319,64 +348,42 @@ pub fn commonise_tars(tnames: &[&str]) {
              p1commonsizestr);
 
     println!("Phase 2: data compare");
-    let mut p2result: Vec<HashableHeader> = vec![];
+    let mut commonfiles: Vec<HashableHeader> = vec![];
     // TODO: sort by offset in archive? means not seeking backwards
     for (i, hheader) in commonheaders.iter().enumerate() {
         let mut files: Vec<&mut tar::Entry<_>> = arheadmaps.iter_mut()
-                                                                .map(|arhm| {
-                                                                    &mut **arhm.get_mut(hheader).unwrap()
-                                                                })
-                                                                .collect();
+                                                           .map(|arhm| {
+                                                               &mut **arhm.get_mut(hheader).unwrap()
+                                                           })
+                                                           .collect();
         // Do the files have the same contents?
         // Note we've verified they have the same size by now
-        // This approach is slow:
-        //     if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
-        let mut buffiles: Vec<_> = files.iter_mut()
-                                        .map(|f| io::BufReader::with_capacity(512, f))
-                                        .collect();
-        loop {
-            let numread = {
-                let bufs: Vec<&[u8]> = buffiles.iter_mut()
-                                               .map(|bf| bf.fill_buf().unwrap())
-                                               .collect();
-                let basebuf = bufs[0];
-                let numread = basebuf.len();
-                if numread == 0 {
-                    p2result.push(hheader.clone());
-                    break;
-                }
-                if !bufs.iter().all(|buf| &basebuf == buf) {
-                    break;
-                }
-                numread
-            };
-            for bf in &mut buffiles {
-                bf.consume(numread);
-            }
+        if readers_identical(&mut files) {
+            commonfiles.push(hheader.clone());
         }
         if i % 100 == 0 {
             print!("    Done {}\r", i);
+            io::stdout().flush().unwrap();
         }
-        io::stdout().flush().unwrap();
-        // Leave the file how we found it
-        for bf in &mut buffiles {
-            bf.seek(io::SeekFrom::Start(0)).unwrap();
+        // Reset the file - each entry keeps track of its own position
+        for f in &mut files {
+            f.seek(io::SeekFrom::Start(0)).unwrap();
         }
     }
-    let p2size = p2result.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
-    let p2sizestr = format_num_bytes(p2size);
+    let p2commonsize = commonfiles.iter().fold(0, |sum, h| sum + h.0.size().unwrap());
+    let p2commonsizestr = format_num_bytes(p2commonsize);
     println!("Phase 2 complete: actual {} files with {}",
-             p2result.len(),
-             p2sizestr);
+             commonfiles.len(),
+             p2commonsizestr);
 
     println!("Phase 3a: preparing for layer creation");
     let tonormpath = |h: &HashableHeader| {
         // Normalise it https://github.com/rust-lang/rust/issues/29008
         h.0.path().unwrap().components().as_path().to_path_buf()
     };
-    let commonmap: HashMap<PathBuf, &HashableHeader> = p2result.iter()
-                                                               .map(|h| (tonormpath(h), h))
-                                                               .collect();
+    let commonmap: HashMap<PathBuf, &HashableHeader> = commonfiles.iter()
+                                                                  .map(|h| (tonormpath(h), h))
+                                                                  .collect();
     println!("Phase 3a complete");
 
     println!("Phase 3b: common layer creation");
@@ -399,7 +406,7 @@ pub fn commonise_tars(tnames: &[&str]) {
     let outname = "common.tar";
     // It doesn't matter which head map, these are common files!
     make_layer_tar(outname,
-                   p2result.iter(),
+                   commonfiles.iter(),
                    vec![].iter_mut(),
                    arheadmaps.get_mut(0).unwrap(),
                    &minimalmkdir);
