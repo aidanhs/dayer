@@ -1,25 +1,31 @@
 // For test decorators
 #![feature(plugin, custom_attribute)]
 #![plugin(adorn)]
-// Only allow one test directory at a time
-#![feature(static_mutex)]
+#![plugin(docopt_macros)]
+
 // Literal maps for test purposes
 #[cfg(test)]
-#[macro_use]
-extern crate maplit;
+#[macro_use] extern crate maplit;
+#[cfg(test)]
+#[macro_use] extern crate lazy_static;
 
+extern crate docopt;
+extern crate rustc_serialize;
 extern crate tar;
 
+mod util;
+
 use std::collections::{HashMap, HashSet};
-use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use std::process;
 use std::str;
+
 use tar::{Header, Archive};
+
+use util::{find_common_keys, format_num_bytes, readers_identical, to_string_slices};
 
 // https://github.com/rust-lang/rust/issues/13721
 #[derive(Clone)]
@@ -88,65 +94,6 @@ fn get_header_map<'a, 'b>(arfiles: &'a mut Vec<tar::Entry<'b, fs::File>>)
         arfilemap.insert(HashableHeader::new(file.header()), file);
     }
     arfilemap
-}
-
-fn find_common_keys<K, V>(hms: &[HashMap<K, V>]) -> Vec<K>
-    where K: Clone + Eq + Hash
-{
-    let mut keycount: HashMap<&K, usize> = HashMap::new();
-    for key in hms.iter().flat_map(|hm| hm.keys()) {
-        let counter = keycount.entry(key).or_insert(0);
-        *counter += 1;
-    }
-    let numhms = hms.len();
-    keycount.iter()
-            .filter_map(|(key, count)| {
-                if *count != numhms {
-                    None
-                } else {
-                    Some((*key).clone())
-                }
-            })
-            .collect()
-}
-
-fn readers_identical<R>(rs: &mut [R]) -> bool
-    where R: Read
-{
-    // This approach is slow:
-    // if f1.bytes().zip(f2.bytes()).all(|(b1, b2)| b1.unwrap() == b2.unwrap()) {
-    let mut brs: Vec<_> = rs.iter_mut()
-                            .map(|r| io::BufReader::with_capacity(512, r))
-                            .collect();
-    loop {
-        let numread = {
-            let bufs: Vec<_> = brs.iter_mut()
-                                  .map(|buf| buf.fill_buf().unwrap())
-                                  .collect();
-            let basebuf = bufs[0];
-            let numread = basebuf.len();
-            if numread == 0 {
-                return true;
-            }
-            if !bufs.iter().all(|buf| &basebuf == buf) {
-                return false;
-            }
-            numread
-        };
-        for br in &mut brs {
-            br.consume(numread);
-        }
-    }
-}
-
-fn format_num_bytes(num: u64) -> String {
-    if num > 99 * 1024 * 1024 {
-        format!("~{}MB", num / 1024 / 1024)
-    } else if num > 99 * 1024 {
-        format!("~{}KB", num / 1024)
-    } else {
-        format!("~{}B", num)
-    }
 }
 
 fn make_layer_tar<'a,
@@ -295,29 +242,25 @@ fn get_archive_entries<'a>(ar: &'a Archive<fs::File>,
 // - assert it's a posix archives (i.e. dirs use type 5 rather than 1)
 // - ensure hard links don't get split across archives
 
+docopt!(Args derive Debug, "
+Usage:
+       dayer commonise-tar <tarpath> <tarpath> [<tarpath>...]
+       dayer --help
+
+Options:
+    --help  Show this message.
+");
+
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        println!("No operation specified");
-        process::exit(1);
+    let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
+    if args.cmd_commonise_tar {
+        commonise_tars(&to_string_slices(&args.arg_tarpath))
+    } else {
+        unreachable!("no cmd")
     }
-    if args[1] == "commonise" {
-        println!("Invalid operation - use shell script to commonise");
-        process::exit(1);
-    }
-    if args[1] != "commonise-tar" {
-        println!("Invalid operation - only commonise-tar supported");
-        process::exit(1);
-    }
-    if args.len() < 4 {
-        println!("Invalid number of args: {}", args.len());
-        process::exit(1);
-    }
-    let slargs: Vec<&str> = args[2..].iter().map(|s| &s[..]).collect();
-    commonise_tars(&slargs[..]);
 }
 
-pub fn commonise_tars(tnames: &[&str]) {
+fn commonise_tars(tnames: &[&str]) {
     println!("Opening tars");
     let ars: Vec<tar::Archive<_>> = tnames.iter()
                                           .map(|tname| {
@@ -440,7 +383,7 @@ mod tests {
     use std::env::set_current_dir;
     use std::fs;
     use std::io::prelude::*;
-    use std::sync::{StaticMutex, MUTEX_INIT};
+    use std::sync::Mutex;
 
     use self::tempdir::TempDir;
     use self::DirTreeEntry::*;
@@ -455,7 +398,9 @@ mod tests {
         })
     }
 
-    static TMPLOCK: StaticMutex = MUTEX_INIT;
+    lazy_static! {
+        pub static ref TMPLOCK: Mutex<()> = Mutex::new(());
+    }
 
     // Does not put program back in original dir
     fn intmp<F>(f: F)

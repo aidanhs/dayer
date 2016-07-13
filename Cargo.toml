@@ -4,9 +4,14 @@ version = "0.1.1"
 authors = ["Aidan Hobson Sayers <aidanhs@cantab.net>"]
 
 [dependencies]
+docopt = "0.6"
+docopt_macros = "0.6"
+rustc-serialize = "0.3"
 tar = "0.3.3"
-adorn = "0.1.2" # wasn't working in dev-deps?
+# Plugins cann't be conditionally loaded, so can't go in dev-dependencies
+adorn = { git = "https://github.com/Manishearth/rust-adorn.git", rev = "efc6d5f" }
 
 [dev-dependencies]
 maplit = "0.1.2"
 tempdir = "0.3"
+lazy_static = "0.1.*"

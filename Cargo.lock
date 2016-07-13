@@ -2,8 +2,12 @@
 name = "dayer"
 version = "0.1.1"
 dependencies = [
- "adorn 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "adorn 0.1.2 (git+https://github.com/Manishearth/rust-adorn.git?rev=efc6d5f)",
+ "docopt 0.6.81 (registry+https://github.com/rust-lang/crates.io-index)",
+ "docopt_macros 0.6.85 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)",
  "maplit 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-serialize 0.3.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "tar 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempdir 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -11,7 +15,7 @@ dependencies = [
 [[package]]
 name = "adorn"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/Manishearth/rust-adorn.git?rev=efc6d5f#efc6d5f64fae581a71ffde77e53ecf451010d9a5"
 
 [[package]]
 name = "advapi32-sys"
@@ -20,6 +24,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "winapi 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi-build 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "aho-corasick"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "memchr 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "docopt"
+version = "0.6.81"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "regex 0.1.65 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-serialize 0.3.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "strsim 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "docopt_macros"
+version = "0.6.85"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "docopt 0.6.81 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -42,6 +72,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy_static"
+version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "libc"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -57,6 +92,19 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "memchr"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "libc 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mempool"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "rand"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -65,6 +113,33 @@ dependencies = [
  "libc 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "regex"
+version = "0.1.65"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "aho-corasick 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "memchr 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mempool 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex-syntax 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "utf8-ranges 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "regex-syntax"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "rustc-serialize"
+version = "0.3.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "strsim"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "tar"
@@ -83,6 +158,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "rand 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "utf8-ranges"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "winapi"
