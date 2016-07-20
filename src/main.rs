@@ -10,6 +10,7 @@
 #[macro_use] extern crate lazy_static;
 
 extern crate docopt;
+extern crate hyper;
 extern crate rustc_serialize;
 extern crate tar;
 
@@ -17,21 +18,34 @@ mod util;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io;
+use std::io::{BufReader, BufWriter};
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::str;
 
-use tar::{Header, Archive};
+use hyper::client::{Client, RedirectPolicy};
+use hyper::client::response::Response;
+use hyper::header::{Accept, Authorization, Bearer, Headers, qitem};
+use hyper::method::Method;
+use hyper::mime::{Mime, TopLevel, SubLevel};
+use hyper::status::StatusCode;
+use hyper::Url;
+
+use rustc_serialize::json;
+
+use tar::Archive;
 
 use util::{find_common_keys, format_num_bytes, readers_identical, to_string_slices};
 
 // https://github.com/rust-lang/rust/issues/13721
 #[derive(Clone)]
-struct HashableHeader(Header);
+struct HashableHeader(tar::Header);
 impl HashableHeader {
-    pub fn new(srcheader: &Header) -> HashableHeader {
+    pub fn new(srcheader: &tar::Header) -> HashableHeader {
         HashableHeader(srcheader.clone())
     }
     // stolen from tar-rs
@@ -242,19 +256,25 @@ fn get_archive_entries<'a>(ar: &'a Archive<fs::File>,
 // - assert it's a posix archives (i.e. dirs use type 5 rather than 1)
 // - ensure hard links don't get split across archives
 
+//       dayer export-image <imagetar>
 docopt!(Args derive Debug, "
 Usage:
        dayer commonise-tar <tarpath> <tarpath> [<tarpath>...]
+       dayer download-image <imageurl> <targetdir>
        dayer --help
 
 Options:
-    --help  Show this message.
+    --help     Show this message.
+    <imageurl> A fully qualified image url (e.g. `ubuntu` would be specified as
+               `https://registry-1.docker.io/library/ubuntu:latest`)
 ");
 
 fn main() {
     let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
     if args.cmd_commonise_tar {
         commonise_tars(&to_string_slices(&args.arg_tarpath))
+    } else if args.cmd_download_image {
+        download_image(&args.arg_imageurl, &args.arg_targetdir)
     } else {
         unreachable!("no cmd")
     }
@@ -373,6 +393,131 @@ fn commonise_tars(tnames: &[&str]) {
     }
     println!("Phase 3c complete: created {} individual tars",
              arheadmaps.len());
+}
+
+fn req_maybe_bearer_auth(client: &Client, method: Method, url: Url, headers: Headers) -> Response {
+    let res = client.request(Method::Get, url.clone()).headers(headers.clone()).send().unwrap();
+    if res.status != StatusCode::Unauthorized {
+        return res
+    }
+    let auth_challenge = res.headers.get_raw("www-authenticate").unwrap();
+    assert!(auth_challenge.len() == 1);
+    let mut auth_challenge = &auth_challenge[0][..];
+    assert!(auth_challenge.starts_with(b"Bearer "));
+    auth_challenge = &auth_challenge[b"Bearer ".len()..];
+    let mut auth_challenge_realm = None;
+    let mut auth_challenge_service = None;
+    let mut auth_challenge_scope = None;
+    loop {
+        let eqpos = auth_challenge.iter().position(|&b| b == b'=').unwrap();
+        let key = &auth_challenge[..eqpos];
+        assert!(auth_challenge[eqpos + 1] == b'"');
+        let valstart = eqpos + 2;
+        let valend = valstart + auth_challenge.iter().skip(valstart).position(|&b| b == b'"').unwrap();
+        let val = String::from_utf8(auth_challenge[valstart..valend].to_vec()).unwrap();
+        match key {
+            b"realm" => auth_challenge_realm = Some(val),
+            b"service" => auth_challenge_service = Some(val),
+            b"scope" => auth_challenge_scope = Some(val),
+            _ => panic!(format!("unknown key in auth challenge {:?}", key)),
+        }
+        if auth_challenge.len() == valend + 1 { break }
+        assert!(auth_challenge[valend + 1] == b',');
+        auth_challenge = &auth_challenge[valend + 2..];
+    }
+    let mut authurl = Url::parse(&auth_challenge_realm.unwrap()).unwrap();
+    authurl.query_pairs_mut()
+        .append_pair("service", &auth_challenge_service.unwrap())
+        .append_pair("scope", &auth_challenge_scope.unwrap());
+    let authreq = client.request(Method::Get, authurl);
+    let mut authjson = String::new();
+    authreq.send().unwrap().read_to_string(&mut authjson).unwrap();
+    #[derive(RustcDecodable)]
+    struct AuthToken { token: String }
+    let authtoken = json::decode::<AuthToken>(&authjson).unwrap().token;
+    let newreq = client.request(method, url).headers(headers).header(Authorization(Bearer { token: authtoken }));
+    newreq.send().unwrap()
+}
+
+fn download_image(imageurlstr: &str, targetdir: &str) {
+    let imageurl = Url::parse(imageurlstr).unwrap();
+    let imagename = imageurl.path();
+    assert!(&imagename[0..1] == "/");
+    let imagetagstart = imagename.bytes().position(|b| b == b':').unwrap();
+    let imagetag = &imagename[imagetagstart+1..];
+    let imagename = &imagename[1..imagetagstart];
+    let mut registryurl = imageurl.clone();
+    registryurl.set_path("v2/");
+
+    fs::create_dir(targetdir).unwrap();
+
+    let mut client = &mut Client::new();
+    client.set_redirect_policy(RedirectPolicy::FollowAll);
+
+    let url = registryurl.join(&format!("{}/manifests/{}", imagename, imagetag)).unwrap();
+    let mut manifestheaders = Headers::new();
+    manifestheaders.set(Accept(vec![
+        qitem(Mime(TopLevel::Application, SubLevel::Ext("vnd.docker.distribution.manifest.v2+json".to_owned()), vec![])),
+    ]));
+    let mut manifestjson = String::new();
+    req_maybe_bearer_auth(client, Method::Get, url, manifestheaders).read_to_string(&mut manifestjson).unwrap();
+    // https://docs.docker.com/registry/spec/api/#/pulling-an-image
+    // https://docs.docker.com/registry/spec/manifest-v2-2/
+    // Should really verify manifest
+    #[derive(RustcDecodable)]
+    struct Layer { digest: String }
+    #[derive(RustcDecodable)]
+    struct ImageManifest {
+        layers: Vec<Layer>,
+    }
+    let manifest: ImageManifest = json::decode(&manifestjson).unwrap();
+    let blobs: Vec<&str> = manifest.layers.iter().map(|fl| fl.digest.as_str()).collect();
+    println!("Found {} blobs", blobs.len());
+    let mut blobheaders = Headers::new();
+    blobheaders.set(Accept(vec![
+        qitem(Mime(TopLevel::Application, SubLevel::Ext("vnd.docker.image.rootfs.diff.tar.gzip".to_owned()), vec![])),
+    ]));
+    for blob in &blobs {
+        println!("Downloading blob {}", blob);
+        let file = File::create(blob).unwrap();
+        let bloburl = registryurl.join(&format!("{}/blobs/{}", imagename, blob)).unwrap();
+        let res = req_maybe_bearer_auth(client, Method::Get, bloburl, blobheaders.clone());
+        io::copy(&mut BufReader::new(res), &mut BufWriter::new(file)).unwrap();
+    }
+    for blob in blobs.iter() {
+        println!("Extracting blob {}", blob);
+        let exit = Command::new("tar").args(&["--anchored", "--exclude=dev/*", "--force-local", "-C", targetdir, "-xf", blob])
+            .spawn().unwrap().wait().unwrap();
+        assert!(exit.success());
+        let output = Command::new("find").args(&[targetdir, "-type", "f", "-name", ".wh.*", "-print0"]).output().unwrap();
+        assert!(output.status.success());
+        let mut whfilesstr = output.stdout;
+        if whfilesstr.is_empty() { continue }
+        assert!(*whfilesstr.last().unwrap() == b'\0');
+        whfilesstr.pop();
+        let whfiles: Vec<&str> = whfilesstr.split(|&b| b == b'\0').map(|bs| str::from_utf8(bs).unwrap()).collect();
+        for whfile in whfiles {
+            let whpath = Path::new(whfile);
+            let whname = whpath.file_name().unwrap().to_str().unwrap();
+            assert!(whname.starts_with(".wh."));
+            let fname = &whname[4..];
+            let mut fpath = whpath.parent().unwrap().to_path_buf();
+            fpath.push(fname);
+            if fpath.is_file() {
+                fs::remove_file(fpath).unwrap()
+            } else {
+                fs::remove_dir_all(fpath).unwrap()
+            }
+            fs::remove_file(whpath).unwrap()
+        }
+    }
+    let mut blobs = blobs;
+    blobs.sort();
+    blobs.dedup();
+    for blob in blobs {
+        println!("Removing {}", blob);
+        fs::remove_file(blob).unwrap()
+    }
 }
 
 #[cfg(test)]
