@@ -280,7 +280,7 @@ fn main() {
     }
 }
 
-fn commonise_tars(tnames: &[&str]) {
+pub fn commonise_tars(tnames: &[&str]) {
     println!("Opening tars");
     let ars: Vec<tar::Archive<_>> = tnames.iter()
                                           .map(|tname| {
@@ -534,7 +534,7 @@ mod tests {
     use self::DirTreeEntry::*;
     use super::tar::Archive;
 
-    use super::*;
+    use super::commonise_tars;
 
     macro_rules! t {
         ($e:expr) => (match $e {
