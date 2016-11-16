@@ -11,7 +11,8 @@ rustc-serialize = "0.3"
 tar = "0.3"
 
 # Plugins cann't be conditionally loaded, so can't go in dev-dependencies
-adorn = { git = "https://github.com/Manishearth/rust-adorn.git", rev = "efc6d5f" }
+#adorn = { git = "https://github.com/Manishearth/rust-adorn.git", rev = "efc6d5f" }
+adorn = { git = "https://github.com/aidanhs/rust-adorn.git", rev = "aphs-2016-07-13-rustup" }
 
 [dev-dependencies]
 maplit = "0.1.2"
