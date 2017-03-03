@@ -10,7 +10,9 @@
 #[macro_use] extern crate lazy_static;
 
 extern crate docopt;
-extern crate hyper;
+extern crate env_logger;
+extern crate mime;
+extern crate reqwest;
 extern crate rustc_serialize;
 extern crate tar;
 
@@ -27,13 +29,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str;
 
-use hyper::client::{Client, RedirectPolicy};
-use hyper::client::response::Response;
-use hyper::header::{Accept, Authorization, Bearer, Headers, qitem};
-use hyper::method::Method;
-use hyper::mime::{Mime, TopLevel, SubLevel};
-use hyper::status::StatusCode;
-use hyper::Url;
+use reqwest::Client;
+use reqwest::Response;
+use reqwest::header::{Accept, Authorization, Bearer, Headers, qitem};
+use reqwest::Method;
+use mime::{Mime, TopLevel, SubLevel};
+use reqwest::StatusCode;
+use reqwest::Url;
 
 use rustc_serialize::json;
 
@@ -397,10 +399,10 @@ pub fn commonise_tars(tnames: &[&str]) {
 
 fn req_maybe_bearer_auth(client: &Client, method: Method, url: Url, headers: Headers) -> Response {
     let res = client.request(Method::Get, url.clone()).headers(headers.clone()).send().unwrap();
-    if res.status != StatusCode::Unauthorized {
+    if *res.status() != StatusCode::Unauthorized {
         return res
     }
-    let auth_challenge = res.headers.get_raw("www-authenticate").unwrap();
+    let auth_challenge = res.headers().get_raw("www-authenticate").unwrap();
     assert!(auth_challenge.len() == 1);
     let mut auth_challenge = &auth_challenge[0][..];
     assert!(auth_challenge.starts_with(b"Bearer "));
@@ -440,6 +442,7 @@ fn req_maybe_bearer_auth(client: &Client, method: Method, url: Url, headers: Hea
 }
 
 fn download_image(imageurlstr: &str, targetdir: &str) {
+    env_logger::init().unwrap();
     let imageurl = Url::parse(imageurlstr).unwrap();
     let imagename = imageurl.path();
     assert!(&imagename[0..1] == "/");
@@ -451,8 +454,7 @@ fn download_image(imageurlstr: &str, targetdir: &str) {
 
     fs::create_dir(targetdir).unwrap();
 
-    let mut client = &mut Client::new();
-    client.set_redirect_policy(RedirectPolicy::FollowAll);
+    let client = &Client::new().unwrap();
 
     let url = registryurl.join(&format!("{}/manifests/{}", imagename, imagetag)).unwrap();
     let mut manifestheaders = Headers::new();
