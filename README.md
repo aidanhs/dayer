@@ -4,10 +4,28 @@ Eventually your go-to tool for manipulating Docker image layers.
 
 Get the bits and pieces with:
 ```
-$ curl -o dayer -sSL https://github.com/aidanhs/dayer/releases/download/v0.1.1/dayer-linux-x64
+$ curl -o dayer -sSL https://github.com/aidanhs/dayer/releases/download/v0.2/dayer-linux-x64
+$ curl -O -sSL https://raw.githubusercontent.com/aidanhs/dayer/v0.2/commonise.sh
 $ curl -o jq -sSL https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64
-$ curl -O -sSL https://raw.githubusercontent.com/aidanhs/dayer/v0.1.1/commonise.sh
 $ chmod +x dayer jq commonise.sh
+```
+
+The dayer binary is the main 'product'. `commonise.sh` wraps `dayer` and
+uses it in combination with `jq` to provide the functionality described in
+the 'commonise' section below. Ideally this will move into the dayer binary
+itself and `commonise.sh` and `jq` will go away.
+
+```
+$ dayer --help
+Usage:
+       dayer commonise-tar <tarpath> <tarpath> [<tarpath>...]
+       dayer download-image <imageurl> <targetdir>
+       dayer --help
+
+Options:
+    --help     Show this message.
+    <imageurl> A fully qualified image url (e.g. `ubuntu` would be specified as
+               `https://registry-1.docker.io/library/ubuntu:latest`)
 ```
 
 ## Commands
@@ -167,7 +185,7 @@ d1c0d97eaeb4        54 seconds ago  [...]  133 MB
 ### commonise-tar
 
 ```
-dayer commonise-tar TAR [TAR...]
+dayer commonise-tar <tarpath> <tarpath> [<tarpath>...]
 ```
 
 Takes tarballs (it0...itN-1) and creates a common tarball (ct aka `common.tar`)
@@ -177,13 +195,23 @@ ct and then otX on top is exactly the same as extracting itX.
 More legibly: finds files shared across multiple tars, puts them in a single tar
 and puts any leftover files into individual tars.
 
-## Dev
-
-Building will currently fail unless you have checkouts of rust-adorn and tar-rs,
-as well as have a nightly version of Rust.
+### download-image
 
 ```
-DBG=0 && cargo build $([ $DBG = 0 ] && echo --release) && RUST_BACKTRACE=1 ./target/$([ $DBG = 0 ] && echo release || echo debug)/dayer commonise <tars>
+dayer download-image <imageurl> <targetdir>
+```
+
+Download a fully qualified image url. For an image on the Docker Hub, like `ubuntu`,
+you can expand it like so: `https://registry-1.docker.io/library/ubuntu:latest`.
+Other registries require a more explicit url anyway, so should be more obvious. For
+example, `quay.io/coreos/etcd` expands to `https://quay.io/coreos/etcd:latest`.
+
+## Dev
+
+Building will currently fail unless you have a nightly version of Rust.
+
+```
+./build.sh # builds release mode binary
 ```
 
 Analysing layers:
@@ -193,9 +221,4 @@ $ tar tvf 81f2400*/layer.tar | grep '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9] '
 
 $ # Size of files in tar directory. Assumes no filenames begin with a space. Make sure to have a trailing slash
 $ PREFIX=opt/ && tar tvf 81f2400*/layer.tar "$PREFIX" | awk '{print $6, $3}' | sed 's|'^"$PREFIX"'\([^/]*\).* \([0-9][0-9]*\)$|\1 \2|' | awk '{a[$1]+=$2}END{for (i in a){print i,a[i]}}' sort
-```
-
-Github release:
-```
-$ cargo build --target=x86_64-unknown-linux-musl --release
 ```

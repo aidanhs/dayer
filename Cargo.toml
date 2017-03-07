@@ -10,8 +10,14 @@ docopt_macros = { git = "https://github.com/aidanhs/docopt.rs.git", rev = "a84a8
 rustc-serialize = "0.3"
 tar = "0.3"
 
-reqwest = "0.4"
+# https://github.com/seanmonstar/reqwest/pull/63
+# https://github.com/sfackler/rust-native-tls/issues/26
+reqwest = "0.4.0"
+hyper = "0.10.5"
 mime = "0.2"
+# Try and make sure all versions down the dep chain are pinned so [replace] works
+hyper-native-tls = "=0.2.2"
+native-tls = "=0.1.1"
 
 env_logger = "0.3"
 
@@ -23,3 +29,6 @@ adorn = { git = "https://github.com/aidanhs/rust-adorn.git", rev = "76ea8fa" }
 maplit = "0.1.2"
 tempdir = "0.3"
 lazy_static = "0.1.*"
+
+[replace]
+"native-tls:0.1.1" = { git = "https://github.com/aidanhs/rust-native-tls.git", rev = "0ab494f" }
