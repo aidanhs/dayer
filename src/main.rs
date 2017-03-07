@@ -457,23 +457,56 @@ fn download_image(imageurlstr: &str, targetdir: &str) {
     let client = &Client::new().unwrap();
 
     let url = registryurl.join(&format!("{}/manifests/{}", imagename, imagetag)).unwrap();
-    let mut manifestheaders = Headers::new();
-    manifestheaders.set(Accept(vec![
-        qitem(Mime(TopLevel::Application, SubLevel::Ext("vnd.docker.distribution.manifest.v2+json".to_owned()), vec![])),
-    ]));
-    let mut manifestjson = String::new();
-    req_maybe_bearer_auth(client, Method::Get, url, manifestheaders).read_to_string(&mut manifestjson).unwrap();
     // https://docs.docker.com/registry/spec/api/#/pulling-an-image
+    // https://docs.docker.com/registry/spec/manifest-v2-1/
     // https://docs.docker.com/registry/spec/manifest-v2-2/
     // Should really verify manifest
-    #[derive(RustcDecodable)]
-    struct Layer { digest: String }
-    #[derive(RustcDecodable)]
-    struct ImageManifest {
-        layers: Vec<Layer>,
+    // Ordered from base to top
+    fn manifest_blobs(client: &Client, url: Url) -> Vec<String> {
+        let mut manifestheaders = Headers::new();
+        manifestheaders.set(Accept(vec![
+            qitem(Mime(TopLevel::Application, SubLevel::Ext("vnd.docker.distribution.manifest.v2+json".to_owned()), vec![])),
+            qitem(Mime(TopLevel::Application, SubLevel::Ext("vnd.docker.distribution.manifest.v1+json".to_owned()), vec![])),
+        ]));
+        let mut manifestjson = String::new();
+        req_maybe_bearer_auth(client, Method::Get, url, manifestheaders).read_to_string(&mut manifestjson).unwrap();
+        #[allow(non_snake_case)]
+        #[derive(RustcDecodable)]
+        struct ImageManifestSchemaVersion {
+            schemaVersion: usize,
+        }
+        let schemavsn = json::decode::<ImageManifestSchemaVersion>(&manifestjson).unwrap().schemaVersion;
+        if schemavsn == 1 {
+            #[allow(non_snake_case)]
+            #[derive(RustcDecodable)]
+            struct FsLayer { blobSum: String }
+            #[allow(non_snake_case)]
+            #[derive(RustcDecodable)]
+            struct ImageManifest {
+                fsLayers: Vec<FsLayer>,
+            }
+            let manifest: ImageManifest = json::decode(&manifestjson).unwrap();
+            // The reverse only happens for v1
+            let mut layers: Vec<_> = manifest.fsLayers.into_iter().map(|fl| fl.blobSum).collect();
+            layers.reverse();
+            layers
+        } else if schemavsn == 2 {
+            #[allow(non_snake_case)]
+            #[derive(RustcDecodable)]
+            struct Layer { digest: String }
+            #[allow(non_snake_case)]
+            #[derive(RustcDecodable)]
+            struct ImageManifest {
+                layers: Vec<Layer>,
+            }
+            let manifest: ImageManifest = json::decode(&manifestjson).unwrap();
+            manifest.layers.into_iter().map(|fl| fl.digest).collect()
+        } else {
+            panic!("unknown manifest schemaVersion {}", schemavsn)
+        }
     }
-    let manifest: ImageManifest = json::decode(&manifestjson).unwrap();
-    let blobs: Vec<&str> = manifest.layers.iter().map(|fl| fl.digest.as_str()).collect();
+    let blobs: Vec<String> = manifest_blobs(client, url);
+
     println!("Found {} blobs", blobs.len());
     let mut blobheaders = Headers::new();
     blobheaders.set(Accept(vec![
