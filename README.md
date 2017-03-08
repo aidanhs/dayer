@@ -206,6 +206,10 @@ you can expand it like so: `https://registry-1.docker.io/library/ubuntu:latest`.
 Other registries require a more explicit url anyway, so should be more obvious. For
 example, `quay.io/coreos/etcd` expands to `https://quay.io/coreos/etcd:latest`.
 
+The individual compressed layers are retrieved, extracted to a folder and then
+deleted. To get the 'true' permissions on the resulting folder, you may want to
+run this subcommand with `sudo`.
+
 ## Dev
 
 Building will currently fail unless you have a nightly version of Rust.
